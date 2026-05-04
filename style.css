@@ -68,6 +68,55 @@ button:active {
   height: 100%;
 }
 
+.maplibregl-ctrl-bottom-left {
+  left: 8px;
+  bottom: 60px;
+}
+
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl {
+  margin: 0;
+}
+
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 44px;
+  min-width: 44px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-group button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.98);
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px var(--shadow-lg);
+}
+
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-group button:hover {
+  background: var(--bg-tertiary);
+}
+
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-group button:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.25);
+  outline-offset: 2px;
+}
+
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-group button + button {
+  margin: 0;
+}
+
 .routing-panel,
 .map-settings-panel {
   position: absolute;
@@ -907,8 +956,8 @@ button:active {
 
   .geocoder {
     top: auto;
-    left: 8px;
-    right: 8px;
+    left: 60px;
+    right: 44px;
     bottom: 8px;
     width: auto;
     max-width: none;

@@ -59,7 +59,7 @@ export function initMap(appState) {
   });
   const eliBasemapController = createEliBasemapController(map, appState);
 
-  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-left');
 
   let hoverMarker = null;
 
