@@ -204,7 +204,7 @@ export function createEliBasemapController(map, appState) {
       }
 
       appState.setLocalImageryStatus(buildLocalImageryState(null, availableFeatures, failedFeatureIds, {
-        name: activeFeature.properties?.name || 'Lokales DOP derzeit nicht verfuegbar',
+        name: activeFeature.properties?.name || 'Lokales DOP derzeit nicht verfügbar',
         details: ELI_ERROR_REASONS[reason],
       }));
     },
@@ -322,7 +322,7 @@ function buildLocalImageryState(activeFeature, availableFeatures, failedFeatureI
       availableCount: availableFeatures.length,
       isAvailable: false,
       selectedId: '',
-      name: blockedFeature.properties?.name || 'Lokales DOP verfuegbar',
+      name: blockedFeature.properties?.name || 'Lokales DOP verfügbar',
       details: blockedFeature.unsupportedReason,
       choices: buildChoices(availableFeatures, failedFeatureIds),
     };

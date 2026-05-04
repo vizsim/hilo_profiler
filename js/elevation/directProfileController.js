@@ -41,7 +41,7 @@ export function setupDirectProfileController(appState, mapterhornClient) {
         return;
       }
 
-      appState.setError(error.message || 'Das Hoehenprofil konnte nicht geladen werden.');
+      appState.setError(error.message || 'Das Höhenprofil konnte nicht geladen werden.');
     }
   });
 }

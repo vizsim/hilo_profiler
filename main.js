@@ -102,25 +102,25 @@ appState.subscribe((state) => {
   eliBasemapButton.setAttribute(
     'title',
     localImagery?.choices?.length > 1
-      ? 'Lokales DOP aktivieren. Rechtsklick fuer Auswahl.'
+      ? 'Lokales DOP aktivieren. Rechtsklick für Auswahl.'
       : 'Lokales DOP aktivieren'
   );
   if (localImagery?.loading) {
-    eliBasemapButtonMeta.textContent = 'Suche Verfuegbarkeit ...';
+    eliBasemapButtonMeta.textContent = 'Suche Verfügbarkeit ...';
     eliBasemapButtonDetail.textContent = 'ELI wird geladen.';
   } else if (localImagery?.isAvailable) {
     eliBasemapButtonMeta.textContent = localImagery.availableCount > 1
       ? `${localImagery.availableCount} Treffer · ${localImagery.name}`
       : localImagery.name;
     eliBasemapButtonDetail.textContent = localImagery.availableCount > 1
-      ? `${localImagery.details} · Rechtsklick fuer Auswahl`
+      ? `${localImagery.details} · Rechtsklick für Auswahl`
       : localImagery.details;
   } else if (localImagery?.choices?.some((choice) => choice.unavailableReason)) {
     eliBasemapButtonMeta.textContent = localImagery.name || 'Lokales DOP';
     eliBasemapButtonDetail.textContent = localImagery.details || 'Wegen CORS nicht darstellbar.';
   } else {
     eliBasemapButtonMeta.textContent = 'Aktuell kein lokales DOP';
-    eliBasemapButtonDetail.textContent = localImagery?.details || 'Bewege die Karte in einen Bereich mit verfuegbaren Luftbildern.';
+    eliBasemapButtonDetail.textContent = localImagery?.details || 'Bewege die Karte in einen Bereich mit verfügbaren Luftbildern.';
   }
 
   if ((localImagery?.choices?.length || 0) < 2) {

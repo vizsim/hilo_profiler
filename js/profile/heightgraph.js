@@ -202,7 +202,7 @@ function drawEmptyState(context, width, height) {
   context.fillStyle = HEIGHTGRAPH_COLORS.axisText;
   context.font = '13px IBM Plex Sans, sans-serif';
   context.textAlign = 'center';
-  context.fillText('Zu wenige Hoehendaten verfuegbar.', width / 2, height / 2);
+  context.fillText('Zu wenige Höhendaten verfügbar.', width / 2, height / 2);
 }
 
 function createNiceAxis(minValue, maxValue, targetTickCount) {
@@ -230,8 +230,7 @@ function createDistanceAxis(maxValue, targetTickCount) {
   }
 
   const step = niceStep(maxValue / targetTickCount);
-  const max = step * Math.ceil(maxValue / step);
-  return { min: 0, max, step, ticks: buildTicks(0, max, step) };
+  return { min: 0, max: maxValue, step, ticks: buildDistanceTicks(maxValue, step) };
 }
 
 function niceStep(rawStep) {
@@ -256,6 +255,34 @@ function buildTicks(minValue, maxValue, step) {
   for (let value = minValue; value <= maxValue + step * 0.5; value += step) {
     ticks.push(Number(value.toFixed(6)));
   }
+  return ticks;
+}
+
+function buildDistanceTicks(maxValue, step) {
+  if (maxValue <= step) {
+    return [0, Number(maxValue.toFixed(6))];
+  }
+
+  const ticks = [0];
+  for (let value = step; value < maxValue; value += step) {
+    ticks.push(Number(value.toFixed(6)));
+  }
+
+  const lastTick = ticks[ticks.length - 1];
+  const roundedMax = Number(maxValue.toFixed(6));
+  const remainingDistance = maxValue - lastTick;
+
+  if (Math.abs(remainingDistance) <= step * 0.05) {
+    ticks[ticks.length - 1] = roundedMax;
+    return ticks;
+  }
+
+  if (ticks.length > 2 && remainingDistance < step * 0.35) {
+    ticks[ticks.length - 1] = roundedMax;
+    return ticks;
+  }
+
+  ticks.push(roundedMax);
   return ticks;
 }
 

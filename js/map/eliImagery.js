@@ -91,7 +91,7 @@ export function buildImagerySummary(activeFeature, availableCount, errorMessage 
       loading: false,
       availableCount: 0,
       isAvailable: false,
-      name: 'Lokales DOP derzeit nicht verfuegbar',
+      name: 'Lokales DOP derzeit nicht verfügbar',
       details: errorMessage,
     };
   }
@@ -101,8 +101,8 @@ export function buildImagerySummary(activeFeature, availableCount, errorMessage 
       loading: false,
       availableCount,
       isAvailable: false,
-      name: 'Kein lokales DOP fuer diese Position',
-      details: availableCount ? `${availableCount} Luftbildquelle(n) gefunden, aber keine wird aktuell unterstuetzt.` : 'Bewege die Karte in einen Bereich mit verfuegbaren Luftbildern.',
+      name: 'Kein lokales DOP für diese Position',
+      details: availableCount ? `${availableCount} Luftbildquelle(n) gefunden, aber keine wird aktuell unterstützt.` : 'Bewege die Karte in einen Bereich mit verfügbaren Luftbildern.',
     };
   }
 

@@ -17,43 +17,11 @@ function pickReplacementTarget(state, nextPoint) {
 function syncReadouts(state) {
   const routingNote = document.getElementById('routing-note');
 
-  document.getElementById('start-readout').textContent = formatPointLabel(state.startPoint);
-  document.getElementById('end-readout').textContent = formatPointLabel(state.endPoint);
-  document.getElementById('line-readout').textContent = formatLineLabel(state);
-
   if (routingNote) {
     const showRoutingNote = !state.startPoint && !state.endPoint;
     routingNote.hidden = !showRoutingNote;
     routingNote.style.display = showRoutingNote ? '' : 'none';
   }
-}
-
-function formatLineLabel(state) {
-  if (!state.lineDistanceMeters) {
-    return 'Warten auf zwei Punkte';
-  }
-
-  if (!state.waypoints.length) {
-    return `${formatDistance(state.lineDistanceMeters)} direkte Distanz`;
-  }
-
-  return `${formatDistance(state.lineDistanceMeters)} ueber ${state.waypoints.length} Zwischenpunkte`;
-}
-
-function formatPointLabel(point) {
-  if (!point) {
-    return 'Noch nicht gesetzt';
-  }
-
-  return `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}`;
-}
-
-function formatDistance(distanceMeters) {
-  if (distanceMeters < 1000) {
-    return `${Math.round(distanceMeters)} m`;
-  }
-
-  return `${(distanceMeters / 1000).toFixed(2)} km`;
 }
 
 export function setupPointSelection(map, appState) {

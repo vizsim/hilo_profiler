@@ -1,6 +1,6 @@
 import { renderHeightgraph } from './heightgraph.js?v=20260504b';
 
-const EMPTY_MESSAGE = 'Setze zwei Punkte auf der Karte, um das direkte Hoehenprofil zu laden.';
+const EMPTY_MESSAGE = 'Setze zwei Punkte auf der Karte, um das direkte Höhenprofil zu laden.';
 
 export function setupProfileView(appState) {
   let lastState = appState.getState();
@@ -73,7 +73,6 @@ function updateProfileState(state) {
   canvasShell.hidden = false;
 
   document.getElementById('distance-summary').textContent = formatDistance(state.profileData.stats.distanceMeters);
-  document.getElementById('sample-summary').textContent = `${state.profileData.samples.length}`;
   document.getElementById('ascent-summary').textContent = formatHeight(state.profileData.stats.ascentMeters);
   document.getElementById('descent-summary').textContent = formatHeight(state.profileData.stats.descentMeters);
   document.getElementById('min-summary').textContent = formatHeight(state.profileData.stats.minElevation);

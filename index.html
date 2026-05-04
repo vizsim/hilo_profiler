@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hilo Profiler</title>
+  <title>HiLo-Profiler</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="./style.css" />
@@ -15,7 +15,7 @@
     <div class="routing-header">
       <div>
         <p class="panel-kicker">Hilo Profiler</p>
-        <h1 id="panel-title">Direktes Hoehenprofil</h1>
+        <h1 id="panel-title">Höhenprofil</h1>
       </div>
       <div class="routing-header-actions">
         <span id="status-badge" class="status-badge">Bereit</span>
@@ -37,62 +37,71 @@
 
     <div id="routing-panel-content" class="routing-content">
       <div id="routing-note" class="routing-note">
-        Setze zwei Punkte auf der Karte oder nutze den Rechtsklick fuer Start, Ziel und Zwischenpunkte.
-      </div>
-
-      <div class="readout-stack">
-        <div class="readout-card">
-          <span>Start</span>
-          <strong id="start-readout">Noch nicht gesetzt</strong>
-        </div>
-        <div class="readout-card">
-          <span>Ziel</span>
-          <strong id="end-readout">Noch nicht gesetzt</strong>
-        </div>
-        <div class="readout-card readout-card-wide">
-          <span>Linie</span>
-          <strong id="line-readout">Warten auf zwei Punkte</strong>
-        </div>
+        Setze zwei Punkte auf der Karte oder nutze den Rechtsklick für Start, Ziel und Zwischenpunkte.
       </div>
 
       <div class="profile-block">
         <div class="section-title-row">
           <h2>Profil</h2>
         </div>
-        <div id="profile-empty" class="profile-empty">Setze zwei Punkte auf der Karte, um das direkte Hoehenprofil zu laden.</div>
+        <div id="profile-empty" class="profile-empty">Setze zwei Punkte auf der Karte, um das direkte Höhenprofil zu laden.</div>
         <div class="profile-canvas-shell" id="profile-canvas-shell" hidden>
           <canvas id="heightgraph-canvas"></canvas>
         </div>
         <div id="profile-summary" class="profile-summary" hidden>
-          <div>
-            <span>Direkte Distanz</span>
-            <strong id="distance-summary">-</strong>
+          <div class="summary-card summary-card-wide summary-card-distance">
+            <div class="summary-stat">
+              <span class="summary-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M5 7.5v9M19 7.5v9M8 12h8M9.5 9.5 8 12l1.5 2.5M14.5 9.5 16 12l-1.5 2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <strong id="distance-summary">-</strong>
+            </div>
           </div>
-          <div>
-            <span>Stichproben</span>
-            <strong id="sample-summary">-</strong>
+          <div class="summary-card">
+            <div class="summary-inline-list">
+              <div class="summary-inline-metric">
+                <span class="summary-inline-label">
+                  <span class="summary-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M12 18V6M12 6l-4 4M12 6l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </span>
+                  <span class="summary-metric-prefix">Auf</span>
+                </span>
+                <strong id="ascent-summary">-</strong>
+              </div>
+              <div class="summary-inline-metric">
+                <span class="summary-inline-label">
+                  <span class="summary-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M12 6v12M12 18l-4-4M12 18l4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </span>
+                  <span class="summary-metric-prefix">Ab</span>
+                </span>
+                <strong id="descent-summary">-</strong>
+              </div>
+            </div>
           </div>
-          <div>
-            <span>Aufstieg</span>
-            <strong id="ascent-summary">-</strong>
-          </div>
-          <div>
-            <span>Abstieg</span>
-            <strong id="descent-summary">-</strong>
-          </div>
-          <div>
-            <span>Minimum</span>
-            <strong id="min-summary">-</strong>
-          </div>
-          <div>
-            <span>Maximum</span>
-            <strong id="max-summary">-</strong>
+          <div class="summary-card">
+            <div class="summary-inline-list">
+              <div class="summary-inline-metric">
+                <span class="summary-metric-prefix">Min</span>
+                <strong id="min-summary">-</strong>
+              </div>
+              <div class="summary-inline-metric">
+                <span class="summary-metric-prefix">Max</span>
+                <strong id="max-summary">-</strong>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       <div class="panel-actions">
-        <button id="reset-points" type="button" class="primary-action">Punkte zuruecksetzen</button>
+        <button id="reset-points" type="button" class="primary-action">Punkte zurücksetzen</button>
       </div>
     </div>
   </section>
@@ -144,7 +153,7 @@
       <button id="eli-basemap-button" class="basemap-btn basemap-btn-local" type="button" data-map="eli-local">
         <span class="basemap-preview basemap-preview-local"></span>
         <span class="basemap-label">Lokales DOP</span>
-        <span id="eli-basemap-button-meta" class="basemap-meta">Suche Verfuegbarkeit ...</span>
+        <span id="eli-basemap-button-meta" class="basemap-meta">Suche Verfügbarkeit ...</span>
         <span id="eli-basemap-button-detail" class="basemap-detail">ELI wird geladen.</span>
       </button>
       </div>
@@ -153,7 +162,7 @@
         <div class="terrain-row">
           <div>
             <strong>Terrain</strong>
-            <p>3D-Oberflaeche</p>
+            <p>3D-Oberfläche</p>
           </div>
           <label class="switch">
             <input id="toggle-terrain" type="checkbox" />
@@ -175,9 +184,33 @@
   </section>
 
   <div id="context-menu" class="context-menu hidden" aria-hidden="true">
-    <button id="context-menu-set-start" type="button" class="context-menu-item">Als Start setzen</button>
-    <button id="context-menu-set-end" type="button" class="context-menu-item">Als Ziel setzen</button>
-    <button id="context-menu-add-waypoint" type="button" class="context-menu-item">Zwischenpunkt hinzufuegen</button>
+    <button id="context-menu-set-start" type="button" class="context-menu-item">
+      <span class="context-menu-icon start" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 21s-5-4.35-5-9a5 5 0 1 1 10 0c0 4.65-5 9-5 9Z" fill="currentColor"/>
+          <circle cx="12" cy="12" r="2.2" fill="#ffffff"/>
+        </svg>
+      </span>
+      <span>Als Start setzen</span>
+    </button>
+    <button id="context-menu-set-end" type="button" class="context-menu-item">
+      <span class="context-menu-icon end" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M7 4v16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M8.5 5.5h8l-2.7 3 2.7 3h-8Z" fill="currentColor"/>
+        </svg>
+      </span>
+      <span>Als Ziel setzen</span>
+    </button>
+    <button id="context-menu-add-waypoint" type="button" class="context-menu-item">
+      <span class="context-menu-icon waypoint" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8" fill="currentColor"/>
+          <path d="M12 8v8M8 12h8" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span>Zwischenpunkt hinzufügen</span>
+    </button>
   </div>
 
   <div id="waypoint-context-menu" class="context-menu waypoint-context-menu hidden" aria-hidden="true">
