@@ -130,23 +130,23 @@
 
     <div id="map-settings-panel-content" class="map-settings-panel-content">
       <div class="basemap-grid">
-      <button class="basemap-btn selected" type="button" data-map="positron">
+      <button class="basemap-btn basemap-btn-compact selected" type="button" data-map="positron">
         <span class="basemap-preview basemap-preview-positron"></span>
         <span class="basemap-label">Positron</span>
       </button>
-      <button class="basemap-btn" type="button" data-map="dark">
+      <button class="basemap-btn basemap-btn-compact" type="button" data-map="dark">
         <span class="basemap-preview basemap-preview-dark"></span>
         <span class="basemap-label">Dark</span>
       </button>
-      <button class="basemap-btn" type="button" data-map="osm">
+      <button class="basemap-btn basemap-btn-compact" type="button" data-map="osm">
         <span class="basemap-preview basemap-preview-osm"></span>
         <span class="basemap-label">OSM Carto</span>
       </button>
-      <button class="basemap-btn" type="button" data-map="satellite">
+      <button class="basemap-btn basemap-btn-imagery" type="button" data-map="satellite">
         <span class="basemap-preview basemap-preview-satellite"></span>
         <span class="basemap-label">Esri Imagery</span>
       </button>
-      <button id="eli-basemap-button" class="basemap-btn" type="button" data-map="eli-local">
+      <button id="eli-basemap-button" class="basemap-btn basemap-btn-local" type="button" data-map="eli-local">
         <span class="basemap-preview basemap-preview-local"></span>
         <span class="basemap-label">Lokales DOP</span>
         <span id="eli-basemap-button-meta" class="basemap-meta">Suche Verfuegbarkeit ...</span>
@@ -158,7 +158,7 @@
         <div class="terrain-row">
           <div>
             <strong>Terrain</strong>
-            <p>3D-Oberflaeche aus Mapterhorn.</p>
+            <p>3D-Oberflaeche</p>
           </div>
           <label class="switch">
             <input id="toggle-terrain" type="checkbox" />
@@ -168,7 +168,7 @@
         <div class="terrain-row">
           <div>
             <strong>Hillshade</strong>
-            <p>Reliefschummerung ueber der Basemap.</p>
+            <p>Reliefschummerung</p>
           </div>
           <label class="switch">
             <input id="toggle-hillshade" type="checkbox" checked />
