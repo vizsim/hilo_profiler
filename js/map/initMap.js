@@ -269,7 +269,12 @@ function applyDisplayedBasemap(map, state) {
 }
 
 function updateHoverMarker(map, state, currentMarker, setMarker) {
-  if (!state.profileData || state.hoverSampleIndex === null) {
+  if (
+    !state.profileData ||
+    state.hoverSampleIndex === null ||
+    state.hoverSampleIndex === 0 ||
+    state.hoverSampleIndex === state.profileData.samples.length - 1
+  ) {
     if (currentMarker) {
       currentMarker.remove();
       setMarker(null);

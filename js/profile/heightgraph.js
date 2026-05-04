@@ -10,6 +10,8 @@ const HEIGHTGRAPH_COLORS = {
   line: '#0f766e',
   hoverLine: 'rgba(37, 99, 235, 0.45)',
   hoverPoint: '#2563eb',
+  tooltipBg: 'rgba(15, 23, 42, 0.92)',
+  tooltipText: '#ffffff',
 };
 
 export function renderHeightgraph(profileData, hoverSampleIndex = null) {
@@ -57,7 +59,14 @@ export function renderHeightgraph(profileData, hoverSampleIndex = null) {
   drawDistanceLabels(context, graphWidth, graphHeight, xAxis, padding);
 
   if (hoverSampleIndex !== null && points[hoverSampleIndex]) {
-    drawHoverIndicator(context, points[hoverSampleIndex], graphHeight, padding);
+    drawHoverIndicator(
+      context,
+      points[hoverSampleIndex],
+      profileData.elevations[hoverSampleIndex],
+      graphWidth,
+      graphHeight,
+      padding
+    );
   }
 }
 
@@ -168,7 +177,7 @@ function drawLine(context, points) {
   context.stroke();
 }
 
-function drawHoverIndicator(context, point, graphHeight, padding) {
+function drawHoverIndicator(context, point, elevation, graphWidth, graphHeight, padding) {
   context.strokeStyle = HEIGHTGRAPH_COLORS.hoverLine;
   context.lineWidth = 1.5;
   context.beginPath();
@@ -183,6 +192,49 @@ function drawHoverIndicator(context, point, graphHeight, padding) {
   context.arc(point.x, point.y, 4.5, 0, Math.PI * 2);
   context.fill();
   context.stroke();
+
+  if (Number.isFinite(elevation)) {
+    drawHoverTooltip(context, point, formatElevationTick(elevation), graphWidth, graphHeight, padding);
+  }
+}
+
+function drawHoverTooltip(context, point, label, graphWidth, graphHeight, padding) {
+  context.save();
+  context.font = '11px IBM Plex Sans, sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+
+  const textWidth = context.measureText(label).width;
+  const tooltipWidth = Math.ceil(textWidth + 16);
+  const tooltipHeight = 22;
+  const minX = padding.left;
+  const maxX = padding.left + graphWidth - tooltipWidth;
+  const tooltipX = Math.min(Math.max(point.x - tooltipWidth / 2, minX), maxX);
+  const preferredTop = point.y - tooltipHeight - 14;
+  const tooltipY = preferredTop >= 6 ? preferredTop : Math.min(point.y + 14, padding.top + graphHeight - tooltipHeight - 8);
+  const tooltipCenterX = tooltipX + tooltipWidth / 2;
+
+  context.fillStyle = HEIGHTGRAPH_COLORS.tooltipBg;
+  drawRoundedRectPath(context, tooltipX, tooltipY, tooltipWidth, tooltipHeight, 8);
+  context.fill();
+
+  context.fillStyle = HEIGHTGRAPH_COLORS.tooltipText;
+  context.fillText(label, tooltipCenterX, tooltipY + tooltipHeight / 2 + 0.5);
+  context.restore();
+}
+
+function drawRoundedRectPath(context, x, y, width, height, radius) {
+  context.beginPath();
+  context.moveTo(x + radius, y);
+  context.lineTo(x + width - radius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + radius);
+  context.lineTo(x + width, y + height - radius);
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  context.lineTo(x + radius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - radius);
+  context.lineTo(x, y + radius);
+  context.quadraticCurveTo(x, y, x + radius, y);
+  context.closePath();
 }
 
 function drawDistanceLabels(context, graphWidth, graphHeight, xAxis, padding) {
