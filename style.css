@@ -158,6 +158,18 @@ button:active {
   gap: 8px;
 }
 
+.routing-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.routing-logo {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+
 .routing-header h1 {
   margin: 4px 0 0;
   font-size: 20px;
@@ -216,6 +228,10 @@ button:active {
   color: var(--text-secondary);
   line-height: 1.45;
   font-size: 13px;
+}
+
+#profile-empty:empty {
+  display: none;
 }
 
 .routing-note {
@@ -319,6 +335,49 @@ button:active {
 
 .panel-actions {
   display: flex;
+}
+
+.panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.panel-footer-badge {
+  display: block;
+  height: 20px;
+  width: auto;
+}
+
+.panel-footer-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.panel-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.panel-footer-link:hover {
+  color: var(--text-primary);
+}
+
+.panel-footer-link svg {
+  width: 22px;
+  height: 22px;
+}
+
+.panel-footer-link-issues span {
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .primary-action {
@@ -478,8 +537,8 @@ button:active {
 
 .basemap-preview {
   display: block;
-  width: 100%;
-  aspect-ratio: 1.42;
+  width: 70px;
+  height: 61px;
   border-radius: 7px;
   border: 1px solid var(--border-primary);
   margin-bottom: 6px;
@@ -487,46 +546,33 @@ button:active {
   background-position: center;
 }
 
-.basemap-btn-compact .basemap-preview {
-  aspect-ratio: 1.14;
-}
-
-.basemap-btn-imagery .basemap-preview {
-  aspect-ratio: 1.14;
-}
-
 .basemap-btn-local .basemap-preview {
-  aspect-ratio: 2.6;
+  margin-right: auto;
 }
 
 .basemap-preview-positron {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent),
-    linear-gradient(135deg, #e6edf5, #f9fbfd 45%, #d9e2ec 46%, #eef2f7 60%, #d5dde8);
+  background-color: #eef3f7;
+  background-image: url('./assets/basemaps/positron-thumb.png');
 }
 
 .basemap-preview-dark {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent),
-    linear-gradient(135deg, #293241, #1b2636 45%, #4b5563 46%, #273549 58%, #15202b);
+  background-color: #192432;
+  background-image: url('./assets/basemaps/dark-thumb.png');
 }
 
 .basemap-preview-osm {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent),
-    linear-gradient(135deg, #ddeccf, #f5f0dd 35%, #d4d8df 36%, #f9fafb 60%, #d8ecf2);
+  background-color: #f5f1df;
+  background-image: url('./assets/basemaps/osm-thumb.png');
 }
 
 .basemap-preview-satellite {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent),
-    linear-gradient(135deg, #31473a, #5c6a2d 28%, #8a774f 44%, #2b3f50 63%, #182026);
+  background-color: #516146;
+  background-image: url('./assets/basemaps/satellite-thumb.png');
 }
 
 .basemap-preview-local {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent),
-    linear-gradient(135deg, #345c46, #7aa078 28%, #c9b56a 44%, #768f9f 63%, #273646);
+  background-color: #587156;
+  background-image: url('./assets/basemaps/local-thumb.png');
 }
 
 .basemap-label {
@@ -534,6 +580,20 @@ button:active {
   font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
+}
+
+.basemap-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.basemap-hint {
+  flex: 0 0 auto;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--text-muted);
 }
 
 .basemap-meta {
@@ -937,20 +997,30 @@ button:active {
     padding: 6px;
   }
 
-  .basemap-btn-compact .basemap-preview {
-    aspect-ratio: 1.06;
-  }
-
-  .basemap-btn-local .basemap-preview {
-    aspect-ratio: 2.2;
-  }
-
   .basemap-label {
     font-size: 11px;
   }
 
+  .basemap-hint {
+    font-size: 9px;
+  }
+
   .basemap-meta,
   .basemap-detail {
+    font-size: 10px;
+  }
+
+  .panel-footer {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .panel-footer-links {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .panel-footer-link-issues span {
     font-size: 10px;
   }
 

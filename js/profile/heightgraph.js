@@ -1,4 +1,5 @@
-const PADDING = { top: 16, right: 22, bottom: 24, left: 42 };
+const BASE_PADDING = { top: 16, right: 22, bottom: 24, left: 42 };
+const Y_AXIS_LABEL_GAP = 10;
 const HEIGHTGRAPH_COLORS = {
   backgroundTop: '#f4fbff',
   backgroundBottom: '#dfeff7',
@@ -23,8 +24,6 @@ export function renderHeightgraph(profileData, hoverSampleIndex = null) {
   context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   context.clearRect(0, 0, cssWidth, cssHeight);
 
-  const graphWidth = cssWidth - PADDING.left - PADDING.right;
-  const graphHeight = cssHeight - PADDING.top - PADDING.bottom;
   const elevations = profileData.elevations.filter((value) => Number.isFinite(value));
 
   if (elevations.length < 2) {
@@ -36,26 +35,29 @@ export function renderHeightgraph(profileData, hoverSampleIndex = null) {
   const maxElevation = Math.max(...elevations);
   const yAxis = createNiceAxis(minElevation, maxElevation, 4);
   const xAxis = createDistanceAxis(Math.max(profileData.stats.distanceMeters, 1), 4);
+  const padding = getChartPadding(context, yAxis);
   const elevationRange = Math.max(1, yAxis.max - yAxis.min);
 
-  renderHeightgraph.lastAxes = { xAxis, yAxis };
+  const graphWidth = cssWidth - padding.left - padding.right;
+  const graphHeight = cssHeight - padding.top - padding.bottom;
+
+  renderHeightgraph.lastAxes = { xAxis, yAxis, padding };
 
   drawBackground(context, cssWidth, cssHeight);
-  drawGrid(context, graphWidth, graphHeight, yAxis);
+  drawGrid(context, graphWidth, graphHeight, yAxis, padding);
 
-  const distanceMeters = Math.max(profileData.stats.distanceMeters, 1);
   const points = profileData.samples.map((sample, index) => {
-    const x = PADDING.left + (graphWidth * sample.distanceMeters) / xAxis.max;
-    const y = PADDING.top + graphHeight - ((profileData.elevations[index] - yAxis.min) / elevationRange) * graphHeight;
+    const x = padding.left + (graphWidth * sample.distanceMeters) / xAxis.max;
+    const y = padding.top + graphHeight - ((profileData.elevations[index] - yAxis.min) / elevationRange) * graphHeight;
     return { x, y };
   });
 
-  drawArea(context, points, graphHeight);
+  drawArea(context, points, graphHeight, padding);
   drawLine(context, points);
-  drawDistanceLabels(context, graphWidth, graphHeight, xAxis);
+  drawDistanceLabels(context, graphWidth, graphHeight, xAxis, padding);
 
   if (hoverSampleIndex !== null && points[hoverSampleIndex]) {
-    drawHoverIndicator(context, points[hoverSampleIndex], graphHeight);
+    drawHoverIndicator(context, points[hoverSampleIndex], graphHeight, padding);
   }
 }
 
@@ -63,22 +65,28 @@ renderHeightgraph.getHoverIndex = function getHoverIndex(profileData, canvas, ev
   const rect = canvas.getBoundingClientRect();
   const relativeX = event.clientX - rect.left;
   const relativeY = event.clientY - rect.top;
+  const context = canvas.getContext('2d');
   const cssWidth = Math.max(280, canvas.clientWidth || 280);
   const cssHeight = 220;
-  const graphWidth = cssWidth - PADDING.left - PADDING.right;
-  const graphHeight = cssHeight - PADDING.top - PADDING.bottom;
+  const elevations = profileData.elevations.filter((value) => Number.isFinite(value));
+  const minElevation = elevations.length ? Math.min(...elevations) : 0;
+  const maxElevation = elevations.length ? Math.max(...elevations) : 1;
+  const yAxis = createNiceAxis(minElevation, maxElevation, 4);
+  const padding = getChartPadding(context, yAxis);
+  const graphWidth = cssWidth - padding.left - padding.right;
+  const graphHeight = cssHeight - padding.top - padding.bottom;
   const xAxis = createDistanceAxis(Math.max(profileData.stats.distanceMeters, 1), 4);
 
   if (
-    relativeX < PADDING.left ||
-    relativeX > PADDING.left + graphWidth ||
-    relativeY < PADDING.top ||
-    relativeY > PADDING.top + graphHeight
+    relativeX < padding.left ||
+    relativeX > padding.left + graphWidth ||
+    relativeY < padding.top ||
+    relativeY > padding.top + graphHeight
   ) {
     return null;
   }
 
-  const ratio = (relativeX - PADDING.left) / graphWidth;
+  const ratio = (relativeX - padding.left) / graphWidth;
   const targetDistance = ratio * xAxis.max;
 
   let nearestIndex = 0;
@@ -113,35 +121,35 @@ function drawBackground(context, width, height) {
   context.fillRect(0, 0, width, height);
 }
 
-function drawGrid(context, graphWidth, graphHeight, yAxis) {
+function drawGrid(context, graphWidth, graphHeight, yAxis, padding) {
   context.strokeStyle = HEIGHTGRAPH_COLORS.grid;
   context.fillStyle = HEIGHTGRAPH_COLORS.axisText;
   context.font = '12px IBM Plex Sans, sans-serif';
   context.textAlign = 'right';
 
   yAxis.ticks.forEach((value) => {
-    const y = PADDING.top + graphHeight - ((value - yAxis.min) / (yAxis.max - yAxis.min || 1)) * graphHeight;
+    const y = padding.top + graphHeight - ((value - yAxis.min) / (yAxis.max - yAxis.min || 1)) * graphHeight;
     context.beginPath();
-    context.moveTo(PADDING.left, y);
-    context.lineTo(PADDING.left + graphWidth, y);
+    context.moveTo(padding.left, y);
+    context.lineTo(padding.left + graphWidth, y);
     context.stroke();
-    context.fillText(`${Math.round(value)} m`, PADDING.left - 8, y + 4);
+    context.fillText(formatElevationTick(value), padding.left - Y_AXIS_LABEL_GAP, y + 4);
   });
 }
 
-function drawArea(context, points, graphHeight) {
+function drawArea(context, points, graphHeight, padding) {
   if (!points.length) {
     return;
   }
 
-  const gradient = context.createLinearGradient(0, PADDING.top, 0, PADDING.top + graphHeight);
+  const gradient = context.createLinearGradient(0, padding.top, 0, padding.top + graphHeight);
   gradient.addColorStop(0, HEIGHTGRAPH_COLORS.areaTop);
   gradient.addColorStop(1, HEIGHTGRAPH_COLORS.areaBottom);
   context.fillStyle = gradient;
   context.beginPath();
-  context.moveTo(points[0].x, PADDING.top + graphHeight);
+  context.moveTo(points[0].x, padding.top + graphHeight);
   points.forEach((point) => context.lineTo(point.x, point.y));
-  context.lineTo(points[points.length - 1].x, PADDING.top + graphHeight);
+  context.lineTo(points[points.length - 1].x, padding.top + graphHeight);
   context.closePath();
   context.fill();
 }
@@ -160,12 +168,12 @@ function drawLine(context, points) {
   context.stroke();
 }
 
-function drawHoverIndicator(context, point, graphHeight) {
+function drawHoverIndicator(context, point, graphHeight, padding) {
   context.strokeStyle = HEIGHTGRAPH_COLORS.hoverLine;
   context.lineWidth = 1.5;
   context.beginPath();
-  context.moveTo(point.x, PADDING.top);
-  context.lineTo(point.x, PADDING.top + graphHeight);
+  context.moveTo(point.x, padding.top);
+  context.lineTo(point.x, padding.top + graphHeight);
   context.stroke();
 
   context.fillStyle = '#ffffff';
@@ -177,13 +185,13 @@ function drawHoverIndicator(context, point, graphHeight) {
   context.stroke();
 }
 
-function drawDistanceLabels(context, graphWidth, graphHeight, xAxis) {
+function drawDistanceLabels(context, graphWidth, graphHeight, xAxis, padding) {
   context.fillStyle = HEIGHTGRAPH_COLORS.axisText;
   context.font = '12px IBM Plex Sans, sans-serif';
   const labelInset = 8;
 
   xAxis.ticks.forEach((value, index) => {
-    let x = PADDING.left + (graphWidth * value) / xAxis.max;
+    let x = padding.left + (graphWidth * value) / xAxis.max;
     if (index === 0) {
       context.textAlign = 'left';
       x += labelInset;
@@ -194,8 +202,26 @@ function drawDistanceLabels(context, graphWidth, graphHeight, xAxis) {
       context.textAlign = 'center';
     }
 
-    context.fillText(formatDistanceTick(value, xAxis.step), x, PADDING.top + graphHeight + 18);
+    context.fillText(formatDistanceTick(value, xAxis.step), x, padding.top + graphHeight + 18);
   });
+}
+
+function getChartPadding(context, yAxis) {
+  context.save();
+  context.font = '12px IBM Plex Sans, sans-serif';
+  const maxLabelWidth = yAxis.ticks.reduce((widest, value) => {
+    return Math.max(widest, context.measureText(formatElevationTick(value)).width);
+  }, 0);
+  context.restore();
+
+  return {
+    ...BASE_PADDING,
+    left: Math.max(BASE_PADDING.left, Math.ceil(maxLabelWidth + Y_AXIS_LABEL_GAP + 2)),
+  };
+}
+
+function formatElevationTick(value) {
+  return `${Math.round(value)} m`;
 }
 
 function drawEmptyState(context, width, height) {

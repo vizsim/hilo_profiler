@@ -1,7 +1,5 @@
 import { renderHeightgraph } from './heightgraph.js?v=20260504b';
 
-const EMPTY_MESSAGE = 'Setze zwei Punkte auf der Karte, um das direkte Höhenprofil zu laden.';
-
 export function setupProfileView(appState) {
   let lastState = appState.getState();
   let resizeFrame = null;
@@ -61,8 +59,8 @@ function updateProfileState(state) {
   }
 
   if (!state.profileData) {
-    empty.textContent = state.error || EMPTY_MESSAGE;
-    empty.hidden = false;
+    empty.textContent = state.error || '';
+    empty.hidden = !state.error;
     summary.hidden = true;
     canvasShell.hidden = true;
     return;
