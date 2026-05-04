@@ -4,6 +4,7 @@ const initialState = {
   hillshadeEnabled: true,
   startPoint: null,
   endPoint: null,
+  waypoints: [],
   directLine: null,
   lineDistanceMeters: null,
   sampleCount: null,
@@ -19,6 +20,7 @@ function cloneState(state) {
     ...state,
     startPoint: state.startPoint ? { ...state.startPoint } : null,
     endPoint: state.endPoint ? { ...state.endPoint } : null,
+    waypoints: state.waypoints.map((waypoint) => ({ ...waypoint })),
     directLine: state.directLine
       ? {
           ...state.directLine,
@@ -98,11 +100,12 @@ export function createAppState() {
         hillshadeEnabled,
       }));
     },
-    setPoints({ startPoint, endPoint, directLine, lineDistanceMeters, sampleCount }) {
+    setPoints({ startPoint, endPoint, waypoints = [], directLine, lineDistanceMeters, sampleCount }) {
       update((currentState) => ({
         ...currentState,
         startPoint,
         endPoint,
+        waypoints,
         directLine,
         lineDistanceMeters,
         sampleCount,
@@ -117,6 +120,7 @@ export function createAppState() {
         ...currentState,
         startPoint: null,
         endPoint: null,
+        waypoints: [],
         directLine: null,
         lineDistanceMeters: null,
         sampleCount: null,

@@ -1,4 +1,5 @@
-import { applySelection } from './pointSelection.js';
+import { applySelection, removeWaypointSelection, toPoint, updateWaypointSelection } from './pointSelection.js';
+import { showWaypointContextMenu } from '../ui/waypointContextMenu.js';
 
 const BASEMAPS = {
   positron: {
@@ -39,8 +40,10 @@ export function initMap(appState) {
   let markerState = {
     start: null,
     end: null,
+    waypoints: [],
     startKey: '',
     endKey: '',
+    waypointKey: '',
   };
   const map = new maplibregl.Map({
     container: 'map',
@@ -109,10 +112,13 @@ export function initMap(appState) {
   return { map };
 }
 
-function createPointMarker(point, kind, onDragEnd) {
+function createPointMarker(point, kind, onDragEnd, label = '') {
   const element = document.createElement('div');
   element.className = `point-marker ${kind}`;
   element.style.cursor = 'grab';
+  if (label) {
+    element.textContent = label;
+  }
 
   const marker = new maplibregl.Marker({ element, anchor: 'bottom', draggable: true }).setLngLat([point.lng, point.lat]);
 
@@ -268,6 +274,7 @@ function updateHoverMarker(map, state, currentMarker, setMarker) {
 function syncPointMarkers(map, markerState, state, appState) {
   const startKey = state.startPoint ? `${state.startPoint.lng},${state.startPoint.lat}` : '';
   const endKey = state.endPoint ? `${state.endPoint.lng},${state.endPoint.lat}` : '';
+  const waypointKey = state.waypoints.map((waypoint) => `${waypoint.lng},${waypoint.lat}`).join('|');
 
   if (!startKey && markerState.start) {
     markerState.start.remove();
@@ -289,7 +296,8 @@ function syncPointMarkers(map, markerState, state, appState) {
       applySelection(
         appState,
         { lng: Number(lngLat.lng.toFixed(6)), lat: Number(lngLat.lat.toFixed(6)) },
-        appState.getState().endPoint
+        appState.getState().endPoint,
+        appState.getState().waypoints
       );
     }).addTo(map);
     markerState.startKey = startKey;
@@ -303,10 +311,37 @@ function syncPointMarkers(map, markerState, state, appState) {
       applySelection(
         appState,
         appState.getState().startPoint,
-        { lng: Number(lngLat.lng.toFixed(6)), lat: Number(lngLat.lat.toFixed(6)) }
+        { lng: Number(lngLat.lng.toFixed(6)), lat: Number(lngLat.lat.toFixed(6)) },
+        appState.getState().waypoints
       );
     }).addTo(map);
     markerState.endKey = endKey;
+  }
+
+  if (waypointKey !== markerState.waypointKey) {
+    markerState.waypoints.forEach((marker) => marker.remove());
+    markerState.waypoints = state.waypoints.map((waypoint, index) => {
+      const marker = createPointMarker(
+        waypoint,
+        'waypoint',
+        (lngLat) => {
+          updateWaypointSelection(appState, index, toPoint(lngLat));
+        },
+        `${index + 1}`
+      ).addTo(map);
+
+      const markerElement = marker.getElement();
+      markerElement.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showWaypointContextMenu(marker, index, event, () => {
+          removeWaypointSelection(appState, index);
+        });
+      });
+
+      return marker;
+    });
+    markerState.waypointKey = waypointKey;
   }
 
   return markerState;

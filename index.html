@@ -21,7 +21,7 @@
     </div>
 
     <div class="routing-content">
-      <p class="panel-copy">Setze zwei Punkte auf der Karte. Das Profil wird entlang der direkten Verbindung aus den Mapterhorn-Hoehendaten berechnet.</p>
+      <p class="panel-copy">Setze zwei Punkte auf der Karte. Per Rechtsklick kannst du Start, Ziel und Zwischenpunkte ueber ein Kontextmenue setzen. Das Profil wird entlang der kompletten Verbindung aus den Mapterhorn-Hoehendaten berechnet.</p>
 
       <div class="readout-stack">
         <div class="readout-card">
@@ -46,6 +46,7 @@
         <p>1. Erster Klick setzt den Startpunkt.</p>
         <p>2. Zweiter Klick setzt den Zielpunkt.</p>
         <p>3. Weitere Klicks ersetzen den naeheren Punkt.</p>
+        <p>4. Rechtsklick auf die Karte oeffnet das Kontextmenue fuer Zwischenpunkte.</p>
       </div>
 
       <div class="profile-block">
@@ -141,6 +142,16 @@
       </div>
     </div>
   </section>
+
+  <div id="context-menu" class="context-menu hidden" aria-hidden="true">
+    <button id="context-menu-set-start" type="button" class="context-menu-item">Als Start setzen</button>
+    <button id="context-menu-set-end" type="button" class="context-menu-item">Als Ziel setzen</button>
+    <button id="context-menu-add-waypoint" type="button" class="context-menu-item">Zwischenpunkt hinzufuegen</button>
+  </div>
+
+  <div id="waypoint-context-menu" class="context-menu waypoint-context-menu hidden" aria-hidden="true">
+    <button id="waypoint-context-menu-delete" type="button" class="context-menu-item danger">Zwischenpunkt entfernen</button>
+  </div>
 
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
   <script type="module" src="./main.js"></script>

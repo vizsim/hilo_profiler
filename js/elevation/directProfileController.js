@@ -1,4 +1,4 @@
-import { sampleLineBetweenPoints } from './lineSampling.js';
+import { samplePathBetweenPoints } from './lineSampling.js';
 import { buildProfileStats } from '../profile/profileStats.js';
 
 export function setupDirectProfileController(appState, mapterhornClient) {
@@ -6,7 +6,7 @@ export function setupDirectProfileController(appState, mapterhornClient) {
   let activeRequestId = 0;
 
   appState.subscribe(async (state) => {
-    const selectionKey = buildSelectionKey(state.startPoint, state.endPoint);
+    const selectionKey = buildSelectionKey(state.startPoint, state.endPoint, state.waypoints);
 
     if (selectionKey === lastSelectionKey) {
       return;
@@ -23,7 +23,7 @@ export function setupDirectProfileController(appState, mapterhornClient) {
 
     try {
       appState.setLoading(true);
-      const samples = sampleLineBetweenPoints(state.startPoint, state.endPoint);
+      const samples = samplePathBetweenPoints(state.startPoint, state.endPoint, state.waypoints);
       const result = await mapterhornClient.sampleProfile(samples);
 
       if (requestId !== activeRequestId) {
@@ -46,10 +46,11 @@ export function setupDirectProfileController(appState, mapterhornClient) {
   });
 }
 
-function buildSelectionKey(startPoint, endPoint) {
+function buildSelectionKey(startPoint, endPoint, waypoints = []) {
   if (!startPoint || !endPoint) {
     return '';
   }
 
-  return `${startPoint.lng},${startPoint.lat}:${endPoint.lng},${endPoint.lat}`;
+  const waypointKey = waypoints.map((waypoint) => `${waypoint.lng},${waypoint.lat}`).join('|');
+  return `${startPoint.lng},${startPoint.lat}:${waypointKey}:${endPoint.lng},${endPoint.lat}`;
 }

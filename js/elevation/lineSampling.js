@@ -1,5 +1,7 @@
-export function buildLineState(startPoint, endPoint) {
-  if (!startPoint || !endPoint) {
+export function buildLineState(startPoint, endPoint, waypoints = []) {
+  const pathPoints = buildPathPoints(startPoint, endPoint, waypoints);
+
+  if (pathPoints.length < 2) {
     return {
       directLine: null,
       lineDistanceMeters: null,
@@ -7,15 +9,12 @@ export function buildLineState(startPoint, endPoint) {
     };
   }
 
-  const lineDistanceMeters = distanceBetweenPoints(startPoint, endPoint);
-  const sampleCount = calculateSampleCount(lineDistanceMeters);
+  const lineDistanceMeters = calculatePathDistance(pathPoints);
+  const sampleCount = calculatePathSampleCount(pathPoints);
 
   return {
     directLine: {
-      coordinates: [
-        [startPoint.lng, startPoint.lat],
-        [endPoint.lng, endPoint.lat],
-      ],
+      coordinates: pathPoints.map((point) => [point.lng, point.lat]),
     },
     lineDistanceMeters,
     sampleCount,
@@ -34,6 +33,65 @@ export function sampleLineBetweenPoints(startPoint, endPoint, options = {}) {
       distanceMeters: distanceMeters * ratio,
     };
   });
+}
+
+export function samplePathBetweenPoints(startPoint, endPoint, waypoints = [], options = {}) {
+  const pathPoints = buildPathPoints(startPoint, endPoint, waypoints);
+  if (pathPoints.length < 2) {
+    return [];
+  }
+
+  const samples = [];
+  let traversedDistance = 0;
+
+  for (let index = 0; index < pathPoints.length - 1; index += 1) {
+    const segmentStart = pathPoints[index];
+    const segmentEnd = pathPoints[index + 1];
+    const segmentDistance = distanceBetweenPoints(segmentStart, segmentEnd);
+    const segmentSampleCount = calculateSampleCount(segmentDistance, options.spacingMeters, options.maxSamples);
+
+    for (let sampleIndex = 0; sampleIndex < segmentSampleCount; sampleIndex += 1) {
+      if (index > 0 && sampleIndex === 0) {
+        continue;
+      }
+
+      const ratio = segmentSampleCount === 1 ? 0 : sampleIndex / (segmentSampleCount - 1);
+      samples.push({
+        lng: interpolate(segmentStart.lng, segmentEnd.lng, ratio),
+        lat: interpolate(segmentStart.lat, segmentEnd.lat, ratio),
+        distanceMeters: traversedDistance + segmentDistance * ratio,
+      });
+    }
+
+    traversedDistance += segmentDistance;
+  }
+
+  return samples;
+}
+
+export function buildPathPoints(startPoint, endPoint, waypoints = []) {
+  return [startPoint, ...waypoints, endPoint].filter(Boolean);
+}
+
+function calculatePathDistance(pathPoints) {
+  let totalDistance = 0;
+
+  for (let index = 0; index < pathPoints.length - 1; index += 1) {
+    totalDistance += distanceBetweenPoints(pathPoints[index], pathPoints[index + 1]);
+  }
+
+  return totalDistance;
+}
+
+function calculatePathSampleCount(pathPoints, spacingMeters = 40, maxSamples = 320) {
+  let totalSamples = 0;
+
+  for (let index = 0; index < pathPoints.length - 1; index += 1) {
+    const segmentDistance = distanceBetweenPoints(pathPoints[index], pathPoints[index + 1]);
+    totalSamples += calculateSampleCount(segmentDistance, spacingMeters, maxSamples);
+  }
+
+  return Math.max(2, totalSamples - (pathPoints.length - 2));
 }
 
 export function distanceBetweenPoints(pointA, pointB) {

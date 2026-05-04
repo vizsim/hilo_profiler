@@ -4,6 +4,8 @@ import { setupPointSelection } from './js/map/pointSelection.js';
 import { setupProfileView } from './js/profile/profileView.js';
 import { createMapterhornClient } from './js/elevation/mapterhornClient.js';
 import { setupDirectProfileController } from './js/elevation/directProfileController.js';
+import { setupContextMenu } from './js/ui/contextMenu.js';
+import { setupPhotonGeocoder } from './js/utils/geocoder.js';
 
 const appState = createAppState();
 const mapApi = initMap(appState);
@@ -12,6 +14,8 @@ const mapterhornClient = createMapterhornClient();
 setupPointSelection(mapApi.map, appState, mapApi);
 setupProfileView(appState);
 setupDirectProfileController(appState, mapterhornClient);
+setupContextMenu(mapApi.map, appState);
+setupPhotonGeocoder(mapApi.map);
 
 const resetButton = document.getElementById('reset-points');
 const basemapButtons = Array.from(document.querySelectorAll('.basemap-btn'));
