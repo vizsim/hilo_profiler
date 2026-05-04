@@ -1,5 +1,6 @@
 import { applySelection, removeWaypointSelection, toPoint, updateWaypointSelection } from './pointSelection.js';
 import { showWaypointContextMenu } from '../ui/waypointContextMenu.js';
+import { createEliBasemapController } from './eliBasemapController.js';
 
 const BASEMAPS = {
   positron: {
@@ -23,6 +24,9 @@ const BASEMAPS = {
     layerId: 'esri-imagery-layer',
     tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
     attribution: 'Tiles © Esri',
+  },
+  'eli-local': {
+    kind: 'dynamic-raster',
   },
 };
 
@@ -53,14 +57,28 @@ export function initMap(appState) {
     minZoom: 3,
     maxZoom: 18,
   });
+  const eliBasemapController = createEliBasemapController(map, appState);
 
   map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
   let hoverMarker = null;
 
+  map.on('load', () => {
+    eliBasemapController.refreshForCurrentCenter();
+  });
+
+  map.on('moveend', () => {
+    eliBasemapController.refreshForCurrentCenter();
+  });
+
+  map.on('error', (event) => {
+    eliBasemapController.handleMapError(event);
+  });
+
   map.on('style.load', () => {
     ensureMapArtifacts(map, latestState);
     applyDisplayedBasemap(map, latestState);
+    eliBasemapController.onStyleLoaded();
     if (!lineHoverRegistered && map.getLayer('selection-line-hit')) {
       registerLineHoverHandlers(map, appState);
       lineHoverRegistered = true;
@@ -70,6 +88,7 @@ export function initMap(appState) {
   appState.subscribe((state) => {
     const basemapChanged = state.basemap !== lastBasemap;
     latestState = state;
+    eliBasemapController.updateState(state);
     const source = map.getSource('selection-line');
     if (source) {
       source.setData(
@@ -99,9 +118,11 @@ export function initMap(appState) {
     applyTerrainState(map, state);
 
     if (basemapChanged && BASEMAPS[state.basemap]?.kind === 'vector') {
+      eliBasemapController.prepareForStyleChange();
       map.setStyle(BASEMAPS[state.basemap].style);
     } else {
       applyDisplayedBasemap(map, state);
+      eliBasemapController.applyForState(state);
     }
 
     lastBasemap = state.basemap;

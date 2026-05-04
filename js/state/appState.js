@@ -1,5 +1,16 @@
 const initialState = {
   basemap: 'positron',
+  localImagery: {
+    loading: true,
+    availableCount: 0,
+    isAvailable: false,
+    selectedId: '',
+    name: 'Suche lokales DOP ...',
+    details: 'ELI wird geladen.',
+    attribution: '',
+    licenseUrl: '',
+    choices: [],
+  },
   terrainEnabled: false,
   hillshadeEnabled: true,
   startPoint: null,
@@ -18,6 +29,12 @@ const initialState = {
 function cloneState(state) {
   return {
     ...state,
+    localImagery: state.localImagery
+      ? {
+          ...state.localImagery,
+          choices: (state.localImagery.choices || []).map((choice) => ({ ...choice })),
+        }
+      : null,
     startPoint: state.startPoint ? { ...state.startPoint } : null,
     endPoint: state.endPoint ? { ...state.endPoint } : null,
     waypoints: state.waypoints.map((waypoint) => ({ ...waypoint })),
@@ -86,6 +103,33 @@ export function createAppState() {
       update((currentState) => ({
         ...currentState,
         basemap,
+      }));
+    },
+    setLocalImageryStatus(localImagery) {
+      update((currentState) => ({
+        ...currentState,
+        localImagery: {
+          ...currentState.localImagery,
+          ...localImagery,
+        },
+      }));
+    },
+    setLocalImagerySelection(selectedId) {
+      const currentChoice = state.localImagery?.choices?.find((choice) => choice.id === selectedId);
+
+      update((currentState) => ({
+        ...currentState,
+        localImagery: {
+          ...currentState.localImagery,
+          selectedId,
+          ...(currentChoice
+            ? {
+                isAvailable: true,
+                name: currentChoice.name,
+                details: currentChoice.details,
+              }
+            : {}),
+        },
       }));
     },
     setTerrainEnabled(terrainEnabled) {
