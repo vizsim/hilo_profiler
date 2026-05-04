@@ -1,4 +1,4 @@
-import { renderHeightgraph } from './heightgraph.js';
+import { renderHeightgraph } from './heightgraph.js?v=20260504b';
 
 const EMPTY_MESSAGE = 'Setze zwei Punkte auf der Karte, um das direkte Hoehenprofil zu laden.';
 
@@ -41,9 +41,16 @@ export function setupProfileView(appState) {
 }
 
 function updateProfileState(state) {
+  const note = document.getElementById('routing-note');
   const empty = document.getElementById('profile-empty');
   const summary = document.getElementById('profile-summary');
   const canvasShell = document.getElementById('profile-canvas-shell');
+
+  if (note) {
+    const shouldHideNote = Boolean(state.startPoint || state.endPoint || state.profileData || state.isLoading || state.error);
+    note.hidden = shouldHideNote;
+    note.style.display = shouldHideNote ? 'none' : '';
+  }
 
   if (state.isLoading) {
     empty.textContent = 'Mapterhorn-Daten werden geladen...';

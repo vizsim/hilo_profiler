@@ -36,7 +36,9 @@
     </div>
 
     <div id="routing-panel-content" class="routing-content">
-      <p class="panel-copy">Setze zwei Punkte auf der Karte. Per Rechtsklick kannst du Start, Ziel und Zwischenpunkte ueber ein Kontextmenue setzen. Das Profil wird entlang der kompletten Verbindung aus den Mapterhorn-Hoehendaten berechnet.</p>
+      <div id="routing-note" class="routing-note">
+        Setze zwei Punkte auf der Karte oder nutze den Rechtsklick fuer Start, Ziel und Zwischenpunkte.
+      </div>
 
       <div class="readout-stack">
         <div class="readout-card">
@@ -51,17 +53,6 @@
           <span>Linie</span>
           <strong id="line-readout">Warten auf zwei Punkte</strong>
         </div>
-      </div>
-
-      <div class="panel-actions">
-        <button id="reset-points" type="button" class="primary-action">Punkte zuruecksetzen</button>
-      </div>
-
-      <div class="hint-list">
-        <p>1. Erster Klick setzt den Startpunkt.</p>
-        <p>2. Zweiter Klick setzt den Zielpunkt.</p>
-        <p>3. Weitere Klicks ersetzen den naeheren Punkt.</p>
-        <p>4. Rechtsklick auf die Karte oeffnet das Kontextmenue fuer Zwischenpunkte.</p>
       </div>
 
       <div class="profile-block">
@@ -98,6 +89,10 @@
             <strong id="max-summary">-</strong>
           </div>
         </div>
+      </div>
+
+      <div class="panel-actions">
+        <button id="reset-points" type="button" class="primary-action">Punkte zuruecksetzen</button>
       </div>
     </div>
   </section>

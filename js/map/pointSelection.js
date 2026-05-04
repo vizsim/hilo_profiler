@@ -15,9 +15,17 @@ function pickReplacementTarget(state, nextPoint) {
 }
 
 function syncReadouts(state) {
+  const routingNote = document.getElementById('routing-note');
+
   document.getElementById('start-readout').textContent = formatPointLabel(state.startPoint);
   document.getElementById('end-readout').textContent = formatPointLabel(state.endPoint);
   document.getElementById('line-readout').textContent = formatLineLabel(state);
+
+  if (routingNote) {
+    const showRoutingNote = !state.startPoint && !state.endPoint;
+    routingNote.hidden = !showRoutingNote;
+    routingNote.style.display = showRoutingNote ? '' : 'none';
+  }
 }
 
 function formatLineLabel(state) {

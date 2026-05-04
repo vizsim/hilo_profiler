@@ -24,6 +24,7 @@ const hillshadeToggle = document.getElementById('toggle-hillshade');
 const mapSettingsToggle = document.getElementById('map-settings-toggle');
 const mapSettingsPanel = document.getElementById('map-settings-panel');
 const mapSettingsPanelToggle = document.getElementById('map-settings-panel-toggle');
+const routingNote = document.getElementById('routing-note');
 const eliBasemapButton = document.getElementById('eli-basemap-button');
 const eliBasemapButtonMeta = document.getElementById('eli-basemap-button-meta');
 const eliBasemapButtonDetail = document.getElementById('eli-basemap-button-detail');
@@ -86,6 +87,12 @@ routingPanelToggle.addEventListener('click', () => {
 syncMapSettingsToggleState(mapSettingsPanel.classList.contains('is-collapsed'));
 
 appState.subscribe((state) => {
+  if (routingNote) {
+    const showRoutingNote = !state.startPoint && !state.endPoint && !state.profileData && !state.isLoading && !state.error;
+    routingNote.hidden = !showRoutingNote;
+    routingNote.style.display = showRoutingNote ? '' : 'none';
+  }
+
   basemapButtons.forEach((button) => {
     button.classList.toggle('selected', button.dataset.map === state.basemap);
   });

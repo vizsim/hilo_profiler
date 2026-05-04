@@ -160,14 +160,20 @@ button:active {
   transform: rotate(180deg);
 }
 
-.panel-copy,
-.hint-list p,
+.routing-note,
 .profile-empty,
 .terrain-row p {
   margin: 0;
   color: var(--text-secondary);
   line-height: 1.45;
   font-size: 13px;
+}
+
+.routing-note {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-primary);
+  background: linear-gradient(180deg, #f8fbff 0%, #eef5fb 100%);
 }
 
 .readout-stack,
@@ -219,11 +225,6 @@ button:active {
 
 .primary-action:hover {
   background: var(--accent-strong);
-}
-
-.hint-list {
-  display: grid;
-  gap: 6px;
 }
 
 .section-title-row {
