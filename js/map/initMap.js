@@ -1,18 +1,28 @@
 import { applySelection } from './pointSelection.js';
 
 const BASEMAPS = {
-  positron: 'https://tiles.openfreemap.org/styles/positron',
-  dark: 'https://tiles.openfreemap.org/styles/dark',
-  osm: createRasterStyle({
-    id: 'osm-carto',
+  positron: {
+    kind: 'vector',
+    style: 'https://tiles.openfreemap.org/styles/positron',
+  },
+  dark: {
+    kind: 'vector',
+    style: 'https://tiles.openfreemap.org/styles/dark',
+  },
+  osm: {
+    kind: 'raster',
+    sourceId: 'osm-carto-source',
+    layerId: 'osm-carto-layer',
     tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
     attribution: '© OpenStreetMap contributors',
-  }),
-  satellite: createRasterStyle({
-    id: 'esri-imagery',
+  },
+  satellite: {
+    kind: 'raster',
+    sourceId: 'esri-imagery-source',
+    layerId: 'esri-imagery-layer',
     tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
     attribution: 'Tiles © Esri',
-  }),
+  },
 };
 
 function buildFeatureCollection(features = []) {
@@ -23,8 +33,8 @@ function buildFeatureCollection(features = []) {
 }
 
 export function initMap(appState) {
-  let activeBasemap = appState.getState().basemap;
   let latestState = appState.getState();
+  let lastBasemap = latestState.basemap;
   let lineHoverRegistered = false;
   let markerState = {
     start: null,
@@ -34,7 +44,7 @@ export function initMap(appState) {
   };
   const map = new maplibregl.Map({
     container: 'map',
-    style: BASEMAPS[activeBasemap],
+    style: BASEMAPS[lastBasemap].style,
     center: [10.4515, 51.1657],
     zoom: 5.7,
     minZoom: 3,
@@ -47,6 +57,7 @@ export function initMap(appState) {
 
   map.on('style.load', () => {
     ensureMapArtifacts(map, latestState);
+    applyDisplayedBasemap(map, latestState);
     if (!lineHoverRegistered && map.getLayer('selection-line-hit')) {
       registerLineHoverHandlers(map, appState);
       lineHoverRegistered = true;
@@ -54,6 +65,7 @@ export function initMap(appState) {
   });
 
   appState.subscribe((state) => {
+    const basemapChanged = state.basemap !== lastBasemap;
     latestState = state;
     const source = map.getSource('selection-line');
     if (source) {
@@ -83,10 +95,13 @@ export function initMap(appState) {
 
     applyTerrainState(map, state);
 
-    if (BASEMAPS[state.basemap] && state.basemap !== activeBasemap) {
-      activeBasemap = state.basemap;
-      map.setStyle(BASEMAPS[state.basemap]);
+    if (basemapChanged && BASEMAPS[state.basemap]?.kind === 'vector') {
+      map.setStyle(BASEMAPS[state.basemap].style);
+    } else {
+      applyDisplayedBasemap(map, state);
     }
+
+    lastBasemap = state.basemap;
 
     document.getElementById('status-badge').textContent = state.status;
   });
@@ -131,8 +146,22 @@ function ensureMapArtifacts(map, state) {
     });
   }
 
+  ensureRasterBasemapLayers(map);
+
+  if (!map.getLayer('selection-line')) {
+    map.addLayer({
+      id: 'selection-line',
+      type: 'line',
+      source: 'selection-line',
+      paint: {
+        'line-color': '#145e4b',
+        'line-width': 4,
+        'line-opacity': 0.88,
+      },
+    });
+  }
+
   if (!map.getLayer('hillshade-layer')) {
-    const firstSymbolLayerId = map.getStyle().layers.find((layer) => layer.type === 'symbol')?.id;
     map.addLayer(
       {
         id: 'hillshade-layer',
@@ -146,21 +175,8 @@ function ensureMapArtifacts(map, state) {
           'hillshade-illumination-anchor': 'map',
         },
       },
-      firstSymbolLayerId
+      'selection-line'
     );
-  }
-
-  if (!map.getLayer('selection-line')) {
-    map.addLayer({
-      id: 'selection-line',
-      type: 'line',
-      source: 'selection-line',
-      paint: {
-        'line-color': '#145e4b',
-        'line-width': 4,
-        'line-opacity': 0.88,
-      },
-    });
   }
 
   if (!map.getLayer('selection-line-hit')) {
@@ -196,6 +212,7 @@ function ensureMapArtifacts(map, state) {
     );
   }
 
+  applyDisplayedBasemap(map, state);
   applyTerrainState(map, state);
 }
 
@@ -211,6 +228,16 @@ function applyTerrainState(map, state) {
       map.easeTo({ pitch: 55, duration: 700 });
     }
   }
+}
+
+function applyDisplayedBasemap(map, state) {
+  Object.entries(BASEMAPS).forEach(([key, config]) => {
+    if (config.kind !== 'raster' || !map.getLayer(config.layerId)) {
+      return;
+    }
+
+    map.setLayoutProperty(config.layerId, 'visibility', state.basemap === key ? 'visible' : 'none');
+  });
 }
 
 function updateHoverMarker(map, state, currentMarker, setMarker) {
@@ -285,35 +312,6 @@ function syncPointMarkers(map, markerState, state, appState) {
   return markerState;
 }
 
-function createRasterStyle({ id, tiles, attribution }) {
-  return {
-    version: 8,
-    name: id,
-    sources: {
-      [id]: {
-        type: 'raster',
-        tiles,
-        tileSize: 256,
-        attribution,
-      },
-    },
-    layers: [
-      {
-        id: `${id}-background`,
-        type: 'background',
-        paint: {
-          'background-color': '#dde4eb',
-        },
-      },
-      {
-        id: `${id}-raster`,
-        type: 'raster',
-        source: id,
-      },
-    ],
-  };
-}
-
 function findNearestSampleIndex(samples, lngLat) {
   let nearestIndex = 0;
   let nearestDistance = Number.POSITIVE_INFINITY;
@@ -329,6 +327,34 @@ function findNearestSampleIndex(samples, lngLat) {
   });
 
   return nearestIndex;
+}
+
+function ensureRasterBasemapLayers(map) {
+  Object.values(BASEMAPS).forEach((config) => {
+    if (config.kind !== 'raster') {
+      return;
+    }
+
+    if (!map.getSource(config.sourceId)) {
+      map.addSource(config.sourceId, {
+        type: 'raster',
+        tiles: config.tiles,
+        tileSize: 256,
+        attribution: config.attribution,
+      });
+    }
+
+    if (!map.getLayer(config.layerId)) {
+      map.addLayer({
+        id: config.layerId,
+        type: 'raster',
+        source: config.sourceId,
+        layout: {
+          visibility: 'none',
+        },
+      });
+    }
+  });
 }
 
 function registerLineHoverHandlers(map, appState) {
