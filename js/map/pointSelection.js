@@ -59,17 +59,21 @@ export function setupPointSelection(map, appState) {
       }
     }
 
-    const lineState = buildLineState(startPoint, endPoint);
-    appState.setPoints({
-      startPoint,
-      endPoint,
-      directLine: lineState.directLine,
-      lineDistanceMeters: lineState.lineDistanceMeters,
-      sampleCount: lineState.sampleCount,
-    });
+    applySelection(appState, startPoint, endPoint);
   });
 
   appState.subscribe((state) => {
     syncReadouts(state);
+  });
+}
+
+export function applySelection(appState, startPoint, endPoint) {
+  const lineState = buildLineState(startPoint, endPoint);
+  appState.setPoints({
+    startPoint,
+    endPoint,
+    directLine: lineState.directLine,
+    lineDistanceMeters: lineState.lineDistanceMeters,
+    sampleCount: lineState.sampleCount,
   });
 }

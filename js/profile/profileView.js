@@ -5,6 +5,7 @@ const EMPTY_MESSAGE = 'Setze zwei Punkte auf der Karte, um das direkte Hoehenpro
 export function setupProfileView(appState) {
   let lastState = appState.getState();
   let resizeFrame = null;
+  const canvas = document.getElementById('heightgraph-canvas');
 
   const render = (state) => {
     lastState = state;
@@ -22,6 +23,20 @@ export function setupProfileView(appState) {
       updateProfileState(lastState);
       resizeFrame = null;
     });
+  });
+
+  canvas.addEventListener('mousemove', (event) => {
+    const state = appState.getState();
+    if (!state.profileData) {
+      return;
+    }
+
+    const hoverSampleIndex = renderHeightgraph.getHoverIndex(state.profileData, canvas, event);
+    appState.setHoverSampleIndex(hoverSampleIndex);
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    appState.setHoverSampleIndex(null);
   });
 }
 
@@ -57,7 +72,7 @@ function updateProfileState(state) {
   document.getElementById('min-summary').textContent = formatHeight(state.profileData.stats.minElevation);
   document.getElementById('max-summary').textContent = formatHeight(state.profileData.stats.maxElevation);
 
-  renderHeightgraph(state.profileData);
+  renderHeightgraph(state.profileData, state.hoverSampleIndex);
 }
 
 function formatDistance(distanceMeters) {

@@ -1,11 +1,14 @@
 const initialState = {
   basemap: 'positron',
+  terrainEnabled: false,
+  hillshadeEnabled: true,
   startPoint: null,
   endPoint: null,
   directLine: null,
   lineDistanceMeters: null,
   sampleCount: null,
   profileData: null,
+  hoverSampleIndex: null,
   isLoading: false,
   status: 'Bereit',
   error: null,
@@ -83,6 +86,18 @@ export function createAppState() {
         basemap,
       }));
     },
+    setTerrainEnabled(terrainEnabled) {
+      update((currentState) => ({
+        ...currentState,
+        terrainEnabled,
+      }));
+    },
+    setHillshadeEnabled(hillshadeEnabled) {
+      update((currentState) => ({
+        ...currentState,
+        hillshadeEnabled,
+      }));
+    },
     setPoints({ startPoint, endPoint, directLine, lineDistanceMeters, sampleCount }) {
       update((currentState) => ({
         ...currentState,
@@ -92,6 +107,7 @@ export function createAppState() {
         lineDistanceMeters,
         sampleCount,
         profileData: null,
+        hoverSampleIndex: null,
         isLoading: false,
         error: null,
       }));
@@ -105,6 +121,7 @@ export function createAppState() {
         lineDistanceMeters: null,
         sampleCount: null,
         profileData: null,
+        hoverSampleIndex: null,
         isLoading: false,
         error: null,
       }));
@@ -121,13 +138,27 @@ export function createAppState() {
         ...currentState,
         profileData,
         sampleCount: profileData?.samples.length ?? currentState.sampleCount,
+        hoverSampleIndex: null,
         isLoading: false,
         error: null,
       }));
     },
+    setHoverSampleIndex(hoverSampleIndex) {
+      update((currentState) => {
+        if (currentState.hoverSampleIndex === hoverSampleIndex) {
+          return currentState;
+        }
+
+        return {
+          ...currentState,
+          hoverSampleIndex,
+        };
+      });
+    },
     setError(message) {
       update((currentState) => ({
         ...currentState,
+        hoverSampleIndex: null,
         isLoading: false,
         error: message,
       }));

@@ -1,6 +1,6 @@
 const PADDING = { top: 16, right: 12, bottom: 24, left: 42 };
 
-export function renderHeightgraph(profileData) {
+export function renderHeightgraph(profileData, hoverSampleIndex = null) {
   const canvas = document.getElementById('heightgraph-canvas');
   const context = canvas.getContext('2d');
   const devicePixelRatio = window.devicePixelRatio || 1;
@@ -40,7 +40,47 @@ export function renderHeightgraph(profileData) {
   drawArea(context, points, graphHeight);
   drawLine(context, points);
   drawDistanceLabels(context, graphWidth, graphHeight, distanceMeters);
+
+  if (hoverSampleIndex !== null && points[hoverSampleIndex]) {
+    drawHoverIndicator(context, points[hoverSampleIndex], graphHeight);
+  }
 }
+
+renderHeightgraph.getHoverIndex = function getHoverIndex(profileData, canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  const relativeX = event.clientX - rect.left;
+  const relativeY = event.clientY - rect.top;
+  const cssWidth = Math.max(280, canvas.clientWidth || 280);
+  const cssHeight = 220;
+  const graphWidth = cssWidth - PADDING.left - PADDING.right;
+  const graphHeight = cssHeight - PADDING.top - PADDING.bottom;
+
+  if (
+    relativeX < PADDING.left ||
+    relativeX > PADDING.left + graphWidth ||
+    relativeY < PADDING.top ||
+    relativeY > PADDING.top + graphHeight
+  ) {
+    return null;
+  }
+
+  const distanceMeters = Math.max(profileData.stats.distanceMeters, 1);
+  const ratio = (relativeX - PADDING.left) / graphWidth;
+  const targetDistance = ratio * distanceMeters;
+
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  profileData.samples.forEach((sample, index) => {
+    const delta = Math.abs(sample.distanceMeters - targetDistance);
+    if (delta < nearestDistance) {
+      nearestDistance = delta;
+      nearestIndex = index;
+    }
+  });
+
+  return nearestIndex;
+};
 
 function drawBackground(context, width, height) {
   const gradient = context.createLinearGradient(0, 0, 0, height);
@@ -96,6 +136,23 @@ function drawLine(context, points) {
     }
     context.lineTo(point.x, point.y);
   });
+  context.stroke();
+}
+
+function drawHoverIndicator(context, point, graphHeight) {
+  context.strokeStyle = 'rgba(37, 99, 235, 0.5)';
+  context.lineWidth = 1.5;
+  context.beginPath();
+  context.moveTo(point.x, PADDING.top);
+  context.lineTo(point.x, PADDING.top + graphHeight);
+  context.stroke();
+
+  context.fillStyle = '#ffffff';
+  context.strokeStyle = '#2563eb';
+  context.lineWidth = 2;
+  context.beginPath();
+  context.arc(point.x, point.y, 4.5, 0, Math.PI * 2);
+  context.fill();
   context.stroke();
 }
 
