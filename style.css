@@ -311,6 +311,10 @@ button:active {
   gap: 14px;
 }
 
+.map-settings-panel.is-collapsed {
+  display: none;
+}
+
 .map-settings-panel.is-collapsed .map-settings-panel-content {
   display: none;
 }
