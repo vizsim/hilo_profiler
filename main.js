@@ -23,6 +23,9 @@ const terrainToggle = document.getElementById('toggle-terrain');
 const hillshadeToggle = document.getElementById('toggle-hillshade');
 const mapSettingsToggle = document.getElementById('map-settings-toggle');
 const mapSettingsPanel = document.getElementById('map-settings-panel');
+const mapSettingsPanelToggle = document.getElementById('map-settings-panel-toggle');
+const routingPanel = document.getElementById('routing-panel');
+const routingPanelToggle = document.getElementById('routing-panel-toggle');
 
 basemapButtons.forEach((button) => {
   button.addEventListener('click', () => {
@@ -42,10 +45,28 @@ hillshadeToggle.addEventListener('change', (event) => {
   appState.setHillshadeEnabled(event.target.checked);
 });
 
-mapSettingsToggle.addEventListener('click', () => {
+const syncMapSettingsToggleState = (collapsed) => {
+  mapSettingsToggle.setAttribute('aria-expanded', String(!collapsed));
+  mapSettingsToggle.setAttribute('title', collapsed ? 'Basemap-Panel erweitern' : 'Basemap-Panel minimieren');
+  mapSettingsPanelToggle.setAttribute('aria-expanded', String(!collapsed));
+  mapSettingsPanelToggle.setAttribute('title', collapsed ? 'Panel erweitern' : 'Panel minimieren');
+};
+
+const toggleMapSettingsPanel = () => {
   const nextCollapsed = mapSettingsPanel.classList.toggle('is-collapsed');
-  mapSettingsToggle.setAttribute('aria-expanded', String(!nextCollapsed));
+  syncMapSettingsToggleState(nextCollapsed);
+};
+
+mapSettingsToggle.addEventListener('click', toggleMapSettingsPanel);
+mapSettingsPanelToggle.addEventListener('click', toggleMapSettingsPanel);
+
+routingPanelToggle.addEventListener('click', () => {
+  const nextCollapsed = routingPanel.classList.toggle('is-collapsed');
+  routingPanelToggle.setAttribute('aria-expanded', String(!nextCollapsed));
+  routingPanelToggle.setAttribute('title', nextCollapsed ? 'Panel erweitern' : 'Panel minimieren');
 });
+
+syncMapSettingsToggleState(mapSettingsPanel.classList.contains('is-collapsed'));
 
 appState.subscribe((state) => {
   basemapButtons.forEach((button) => {

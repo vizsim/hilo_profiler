@@ -1,4 +1,15 @@
 const PADDING = { top: 16, right: 12, bottom: 24, left: 42 };
+const HEIGHTGRAPH_COLORS = {
+  backgroundTop: '#f4fbff',
+  backgroundBottom: '#dfeff7',
+  grid: 'rgba(48, 84, 104, 0.12)',
+  axisText: '#466072',
+  areaTop: 'rgba(16, 185, 129, 0.42)',
+  areaBottom: 'rgba(37, 99, 235, 0.08)',
+  line: '#0f766e',
+  hoverLine: 'rgba(37, 99, 235, 0.45)',
+  hoverPoint: '#2563eb',
+};
 
 export function renderHeightgraph(profileData, hoverSampleIndex = null) {
   const canvas = document.getElementById('heightgraph-canvas');
@@ -84,15 +95,21 @@ renderHeightgraph.getHoverIndex = function getHoverIndex(profileData, canvas, ev
 
 function drawBackground(context, width, height) {
   const gradient = context.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, '#fffaf0');
-  gradient.addColorStop(1, '#efe4cd');
+  gradient.addColorStop(0, HEIGHTGRAPH_COLORS.backgroundTop);
+  gradient.addColorStop(1, HEIGHTGRAPH_COLORS.backgroundBottom);
   context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+
+  const glow = context.createRadialGradient(width * 0.22, height * 0.12, 0, width * 0.22, height * 0.12, width * 0.65);
+  glow.addColorStop(0, 'rgba(255, 255, 255, 0.72)');
+  glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  context.fillStyle = glow;
   context.fillRect(0, 0, width, height);
 }
 
 function drawGrid(context, graphWidth, graphHeight, minElevation, maxElevation) {
-  context.strokeStyle = 'rgba(60, 52, 40, 0.12)';
-  context.fillStyle = '#6a6154';
+  context.strokeStyle = HEIGHTGRAPH_COLORS.grid;
+  context.fillStyle = HEIGHTGRAPH_COLORS.axisText;
   context.font = '12px IBM Plex Sans, sans-serif';
   context.textAlign = 'right';
 
@@ -114,8 +131,8 @@ function drawArea(context, points, graphHeight) {
   }
 
   const gradient = context.createLinearGradient(0, PADDING.top, 0, PADDING.top + graphHeight);
-  gradient.addColorStop(0, 'rgba(20, 94, 75, 0.48)');
-  gradient.addColorStop(1, 'rgba(20, 94, 75, 0.08)');
+  gradient.addColorStop(0, HEIGHTGRAPH_COLORS.areaTop);
+  gradient.addColorStop(1, HEIGHTGRAPH_COLORS.areaBottom);
   context.fillStyle = gradient;
   context.beginPath();
   context.moveTo(points[0].x, PADDING.top + graphHeight);
@@ -126,7 +143,7 @@ function drawArea(context, points, graphHeight) {
 }
 
 function drawLine(context, points) {
-  context.strokeStyle = '#124e3d';
+  context.strokeStyle = HEIGHTGRAPH_COLORS.line;
   context.lineWidth = 2.5;
   context.beginPath();
   points.forEach((point, index) => {
@@ -140,7 +157,7 @@ function drawLine(context, points) {
 }
 
 function drawHoverIndicator(context, point, graphHeight) {
-  context.strokeStyle = 'rgba(37, 99, 235, 0.5)';
+  context.strokeStyle = HEIGHTGRAPH_COLORS.hoverLine;
   context.lineWidth = 1.5;
   context.beginPath();
   context.moveTo(point.x, PADDING.top);
@@ -148,7 +165,7 @@ function drawHoverIndicator(context, point, graphHeight) {
   context.stroke();
 
   context.fillStyle = '#ffffff';
-  context.strokeStyle = '#2563eb';
+  context.strokeStyle = HEIGHTGRAPH_COLORS.hoverPoint;
   context.lineWidth = 2;
   context.beginPath();
   context.arc(point.x, point.y, 4.5, 0, Math.PI * 2);
@@ -157,7 +174,7 @@ function drawHoverIndicator(context, point, graphHeight) {
 }
 
 function drawDistanceLabels(context, graphWidth, graphHeight, distanceMeters) {
-  context.fillStyle = '#6a6154';
+  context.fillStyle = HEIGHTGRAPH_COLORS.axisText;
   context.font = '12px IBM Plex Sans, sans-serif';
   context.textAlign = 'center';
 
@@ -172,7 +189,7 @@ function drawDistanceLabels(context, graphWidth, graphHeight, distanceMeters) {
 }
 
 function drawEmptyState(context, width, height) {
-  context.fillStyle = '#6a6154';
+  context.fillStyle = HEIGHTGRAPH_COLORS.axisText;
   context.font = '13px IBM Plex Sans, sans-serif';
   context.textAlign = 'center';
   context.fillText('Zu wenige Hoehendaten verfuegbar.', width / 2, height / 2);

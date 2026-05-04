@@ -1,3 +1,8 @@
+const DEFAULT_SAMPLE_SPACING_METERS = 10;
+const MIN_SAMPLE_COUNT = 10;
+const DENSE_SAMPLING_THRESHOLD_METERS = 2000;
+const LONG_DISTANCE_SAMPLE_TARGET = 200;
+
 export function buildLineState(startPoint, endPoint, waypoints = []) {
   const pathPoints = buildPathPoints(startPoint, endPoint, waypoints);
 
@@ -83,7 +88,7 @@ function calculatePathDistance(pathPoints) {
   return totalDistance;
 }
 
-function calculatePathSampleCount(pathPoints, spacingMeters = 40, maxSamples = 320) {
+function calculatePathSampleCount(pathPoints, spacingMeters = DEFAULT_SAMPLE_SPACING_METERS, maxSamples = 320) {
   let totalSamples = 0;
 
   for (let index = 0; index < pathPoints.length - 1; index += 1) {
@@ -112,8 +117,18 @@ export function distanceBetweenPoints(pointA, pointB) {
   return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 }
 
-function calculateSampleCount(distanceMeters, spacingMeters = 40, maxSamples = 320) {
-  return Math.max(2, Math.min(maxSamples, Math.ceil(distanceMeters / spacingMeters) + 1));
+function calculateSampleCount(distanceMeters, spacingMeters = DEFAULT_SAMPLE_SPACING_METERS, maxSamples = 320) {
+  const effectiveSpacingMeters = resolveSpacingMeters(distanceMeters, spacingMeters);
+  const targetSampleCount = Math.ceil(distanceMeters / effectiveSpacingMeters) + 1;
+  return Math.max(2, Math.min(maxSamples, Math.max(MIN_SAMPLE_COUNT, targetSampleCount)));
+}
+
+function resolveSpacingMeters(distanceMeters, spacingMeters) {
+  if (distanceMeters <= DENSE_SAMPLING_THRESHOLD_METERS) {
+    return spacingMeters;
+  }
+
+  return Math.max(spacingMeters, distanceMeters / LONG_DISTANCE_SAMPLE_TARGET);
 }
 
 function interpolate(startValue, endValue, ratio) {

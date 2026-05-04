@@ -116,6 +116,7 @@ function createPointMarker(point, kind, onDragEnd, label = '') {
   const element = document.createElement('div');
   element.className = `point-marker ${kind}`;
   element.style.cursor = 'grab';
+
   if (label) {
     element.textContent = label;
   }
@@ -346,7 +347,6 @@ function syncPointMarkers(map, markerState, state, appState) {
 
   return markerState;
 }
-
 function findNearestSampleIndex(samples, lngLat) {
   let nearestIndex = 0;
   let nearestDistance = Number.POSITIVE_INFINITY;

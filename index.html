@@ -11,16 +11,31 @@
 <body>
   <div id="map"></div>
 
-  <section class="routing-panel" aria-labelledby="panel-title">
+  <section id="routing-panel" class="routing-panel" aria-labelledby="panel-title">
     <div class="routing-header">
       <div>
         <p class="panel-kicker">Hilo Profiler</p>
         <h1 id="panel-title">Direktes Hoehenprofil</h1>
       </div>
-      <span id="status-badge" class="status-badge">Bereit</span>
+      <div class="routing-header-actions">
+        <span id="status-badge" class="status-badge">Bereit</span>
+        <button
+          id="routing-panel-toggle"
+          class="panel-toggle"
+          type="button"
+          aria-expanded="true"
+          aria-controls="routing-panel-content"
+          title="Panel minimieren"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 12h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span class="sr-only">Panel minimieren</span>
+        </button>
+      </div>
     </div>
 
-    <div class="routing-content">
+    <div id="routing-panel-content" class="routing-content">
       <p class="panel-copy">Setze zwei Punkte auf der Karte. Per Rechtsklick kannst du Start, Ziel und Zwischenpunkte ueber ein Kontextmenue setzen. Das Profil wird entlang der kompletten Verbindung aus den Mapterhorn-Hoehendaten berechnet.</p>
 
       <div class="readout-stack">
@@ -96,11 +111,25 @@
   </button>
 
   <section id="map-settings-panel" class="map-settings-panel" aria-labelledby="map-settings-title">
-    <div class="section-title-row">
+    <div class="section-title-row panel-section-header">
       <h2 id="map-settings-title">Basemap</h2>
+      <button
+        id="map-settings-panel-toggle"
+        class="panel-toggle"
+        type="button"
+        aria-expanded="true"
+        aria-controls="map-settings-panel-content"
+        title="Panel minimieren"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 12h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span class="sr-only">Panel minimieren</span>
+      </button>
     </div>
 
-    <div class="basemap-grid">
+    <div id="map-settings-panel-content" class="map-settings-panel-content">
+      <div class="basemap-grid">
       <button class="basemap-btn selected" type="button" data-map="positron">
         <span class="basemap-preview basemap-preview-positron"></span>
         <span class="basemap-label">Positron</span>
@@ -117,28 +146,29 @@
         <span class="basemap-preview basemap-preview-satellite"></span>
         <span class="basemap-label">Esri Imagery</span>
       </button>
-    </div>
-
-    <div class="terrain-options">
-      <div class="terrain-row">
-        <div>
-          <strong>Terrain</strong>
-          <p>3D-Oberflaeche aus Mapterhorn.</p>
-        </div>
-        <label class="switch">
-          <input id="toggle-terrain" type="checkbox" />
-          <span class="switch-slider"></span>
-        </label>
       </div>
-      <div class="terrain-row">
-        <div>
-          <strong>Hillshade</strong>
-          <p>Reliefschummerung ueber der Basemap.</p>
+
+      <div class="terrain-options">
+        <div class="terrain-row">
+          <div>
+            <strong>Terrain</strong>
+            <p>3D-Oberflaeche aus Mapterhorn.</p>
+          </div>
+          <label class="switch">
+            <input id="toggle-terrain" type="checkbox" />
+            <span class="switch-slider"></span>
+          </label>
         </div>
-        <label class="switch">
-          <input id="toggle-hillshade" type="checkbox" checked />
-          <span class="switch-slider"></span>
-        </label>
+        <div class="terrain-row">
+          <div>
+            <strong>Hillshade</strong>
+            <p>Reliefschummerung ueber der Basemap.</p>
+          </div>
+          <label class="switch">
+            <input id="toggle-hillshade" type="checkbox" checked />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
       </div>
     </div>
   </section>
