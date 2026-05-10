@@ -61,6 +61,7 @@ const SKY_STYLES = {
 
 const SKY_SYNC_TIMEOUT_KEY = '__hiloSkySyncTimeout';
 const SKY_SYNC_STATE_KEY = '__hiloSkySyncState';
+const STYLE_SWITCH_PENDING_KEY = '__hiloStyleSwitchPending';
 
 function buildFeatureCollection(features = []) {
   return {
@@ -109,8 +110,10 @@ export function initMap(appState) {
   });
 
   map.on('style.load', () => {
+    const skyDelay = map[STYLE_SWITCH_PENDING_KEY] ? 300 : 0;
     ensureMapArtifacts(map, latestState);
-    applyDisplayedBasemap(map, latestState);
+    restoreMapVisualState(map, latestState, { skyDelay });
+    map[STYLE_SWITCH_PENDING_KEY] = false;
     eliBasemapController.onStyleLoaded();
     if (!lineHoverRegistered && map.getLayer('selection-line-hit')) {
       registerLineHoverHandlers(map, appState);
@@ -149,11 +152,12 @@ export function initMap(appState) {
     });
 
     if (basemapChanged && BASEMAPS[state.basemap]?.kind === 'vector') {
+      clearScheduledSkyState(map);
+      map[STYLE_SWITCH_PENDING_KEY] = true;
       eliBasemapController.prepareForStyleChange();
-      map.setStyle(BASEMAPS[state.basemap].style);
+      map.setStyle(BASEMAPS[state.basemap].style, { diff: false });
     } else {
-      applyTerrainState(map, state);
-      applyDisplayedBasemap(map, state);
+      restoreMapVisualState(map, state);
       eliBasemapController.applyForState(state);
     }
 
@@ -282,11 +286,14 @@ function ensureMapArtifacts(map, state) {
     );
   }
 
-  applyDisplayedBasemap(map, state);
-  applyTerrainState(map, state);
 }
 
-function applyTerrainState(map, state) {
+function restoreMapVisualState(map, state, options = {}) {
+  applyDisplayedBasemap(map, state);
+  applyTerrainState(map, state, options);
+}
+
+function applyTerrainState(map, state, options = {}) {
   if (map.getLayer('hillshade-layer')) {
     map.setLayoutProperty('hillshade-layer', 'visibility', state.hillshadeEnabled ? 'visible' : 'none');
   }
@@ -301,10 +308,10 @@ function applyTerrainState(map, state) {
     }
   }
 
-  scheduleSkyState(map, state);
+  scheduleSkyState(map, state, options.skyDelay ?? 0);
 }
 
-function scheduleSkyState(map, state) {
+function scheduleSkyState(map, state, delay = 0) {
   if (typeof map.setSky !== 'function') {
     return;
   }
@@ -315,10 +322,7 @@ function scheduleSkyState(map, state) {
     retriesRemaining: 24,
   };
 
-  if (map[SKY_SYNC_TIMEOUT_KEY]) {
-    clearTimeout(map[SKY_SYNC_TIMEOUT_KEY]);
-    map[SKY_SYNC_TIMEOUT_KEY] = null;
-  }
+  clearScheduledSkyState(map);
 
   const tryApplySky = () => {
     const pendingState = map[SKY_SYNC_STATE_KEY];
@@ -340,7 +344,19 @@ function scheduleSkyState(map, state) {
     map.setSky(pendingState.terrainEnabled ? getSkyStyleForBasemap(pendingState.basemap) : undefined);
   };
 
+  if (delay > 0) {
+    map[SKY_SYNC_TIMEOUT_KEY] = setTimeout(tryApplySky, delay);
+    return;
+  }
+
   tryApplySky();
+}
+
+function clearScheduledSkyState(map) {
+  if (map[SKY_SYNC_TIMEOUT_KEY]) {
+    clearTimeout(map[SKY_SYNC_TIMEOUT_KEY]);
+    map[SKY_SYNC_TIMEOUT_KEY] = null;
+  }
 }
 
 function getSkyStyleForBasemap(basemap) {
