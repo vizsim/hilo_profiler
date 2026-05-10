@@ -72,18 +72,9 @@ const CUSTOM_RUNTIME_LAYER_IDS = new Set([
   'esri-imagery-layer',
   'eli-local-imagery-layer',
   'hilo-3d-buildings',
-  'selection-line',
   'selection-line-overlay',
-  'selection-line-hit',
   'hillshade-layer',
 ]);
-
-function buildFeatureCollection(features = []) {
-  return {
-    type: 'FeatureCollection',
-    features,
-  };
-}
 
 function getDirectLineKey(directLine) {
   if (!directLine?.coordinates?.length) {
@@ -135,7 +126,6 @@ function buildRouteOverlayData(state) {
 export function initMap(appState) {
   let latestState = appState.getState();
   let lastBasemap = latestState.basemap;
-  let lineHoverRegistered = false;
   let markerState = {
     start: null,
     end: null,
@@ -206,12 +196,10 @@ export function initMap(appState) {
     map[STYLE_SWITCH_PENDING_KEY] = false;
     ensureCustomLineOverlays();
     refreshCustomLineOverlays(latestState);
-    if (!lineHoverRegistered && map.getLayer('selection-line-hit')) {
-      registerLineHoverHandlers(map, appState);
-      lineHoverRegistered = true;
-    }
     scheduleStyleRehydrateRetry(map, latestState, eliBasemapController, buildingLayerController);
   });
+
+  registerLineHoverHandlers(map, appState);
 
   appState.subscribe((state) => {
     const previousState = latestState;
@@ -228,25 +216,6 @@ export function initMap(appState) {
     const profileDataChanged = state.profileData !== previousState.profileData;
     latestState = state;
     eliBasemapController.updateState(state);
-    const source = map.getSource('selection-line');
-    if (source && directLineChanged) {
-      source.setData(
-        buildFeatureCollection(
-          state.directLine
-            ? [
-                {
-                  type: 'Feature',
-                  geometry: {
-                    type: 'LineString',
-                    coordinates: state.directLine.coordinates,
-                  },
-                  properties: {},
-                },
-              ]
-            : []
-        )
-      );
-    }
 
     if (directLineChanged || profileDataChanged) {
       refreshCustomLineOverlays(state);
@@ -371,13 +340,6 @@ function createPointMarker(point, kind, onDragEnd, label = '') {
 }
 
 function ensureMapArtifacts(map, state) {
-  if (!map.getSource('selection-line')) {
-    map.addSource('selection-line', {
-      type: 'geojson',
-      data: buildFeatureCollection(),
-    });
-  }
-
   if (!map.getSource('terrain-dem')) {
     map.addSource('terrain-dem', {
       type: 'raster-dem',
@@ -415,39 +377,6 @@ function ensureMapArtifacts(map, state) {
         'hillshade-illumination-anchor': 'map',
       },
     });
-  }
-
-  if (!map.getLayer('selection-line-hit')) {
-    map.addLayer({
-      id: 'selection-line-hit',
-      type: 'line',
-      source: 'selection-line',
-      paint: {
-        'line-color': '#000000',
-        'line-opacity': 0.01,
-        'line-width': 18,
-      },
-    });
-  }
-
-  const refreshedSource = map.getSource('selection-line');
-  if (refreshedSource) {
-    refreshedSource.setData(
-      buildFeatureCollection(
-        state.directLine
-          ? [
-              {
-                type: 'Feature',
-                geometry: {
-                  type: 'LineString',
-                  coordinates: state.directLine.coordinates,
-                },
-                properties: {},
-              },
-            ]
-          : []
-      )
-    );
   }
 
 }
@@ -665,22 +594,6 @@ function syncPointMarkers(map, markerState, state, appState) {
 
   return markerState;
 }
-function findNearestSampleIndex(samples, lngLat) {
-  let nearestIndex = 0;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-
-  samples.forEach((sample, index) => {
-    const deltaLng = sample.lng - lngLat.lng;
-    const deltaLat = sample.lat - lngLat.lat;
-    const distance = deltaLng * deltaLng + deltaLat * deltaLat;
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearestIndex = index;
-    }
-  });
-
-  return nearestIndex;
-}
 
 function ensureRasterBasemapLayers(map) {
   Object.values(BASEMAPS).forEach((config) => {
@@ -710,22 +623,67 @@ function ensureRasterBasemapLayers(map) {
   });
 }
 
+// Pixel radius around the route line that still counts as "hovering it".
+// Generous cushion makes it easy to grab the line on touchpads / trackballs.
+const LINE_HOVER_THRESHOLD_PX = 50;
+
 function registerLineHoverHandlers(map, appState) {
-  map.on('mouseenter', 'selection-line-hit', () => {
-    map.getCanvas().style.cursor = 'pointer';
-  });
+  const setHoverState = (sampleIndex) => {
+    const currentIndex = appState.getState().hoverSampleIndex;
+    if (currentIndex === sampleIndex) {
+      return;
+    }
+    map.getCanvas().style.cursor = sampleIndex === null ? '' : 'pointer';
+    appState.setHoverSampleIndex(sampleIndex);
+  };
 
-  map.on('mouseleave', 'selection-line-hit', () => {
-    map.getCanvas().style.cursor = '';
-    appState.setHoverSampleIndex(null);
-  });
-
-  map.on('mousemove', 'selection-line-hit', (event) => {
-    const state = appState.getState();
-    if (!state.profileData?.samples?.length) {
+  map.on('mousemove', (event) => {
+    const samples = appState.getState().profileData?.samples;
+    if (!samples?.length) {
+      setHoverState(null);
       return;
     }
 
-    appState.setHoverSampleIndex(findNearestSampleIndex(state.profileData.samples, event.lngLat));
+    const nearest = findNearestSampleScreenSpace(
+      samples,
+      map,
+      event.point.x,
+      event.point.y,
+      LINE_HOVER_THRESHOLD_PX
+    );
+    setHoverState(nearest);
   });
+
+  map.on('mouseout', () => {
+    setHoverState(null);
+  });
+}
+
+// Hit-tests against the same screen-space projection the custom line layer
+// uses to render — so the clickable region always matches the visible line,
+// even with terrain enabled or a steep pitch.
+function findNearestSampleScreenSpace(samples, map, cursorX, cursorY, maxPixelDistance) {
+  const maxDistanceSq = maxPixelDistance * maxPixelDistance;
+  let nearestIndex = null;
+  let nearestDistanceSq = maxDistanceSq;
+  const lngLatScratch = { lng: 0, lat: 0 };
+
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index];
+    lngLatScratch.lng = sample.lng;
+    lngLatScratch.lat = sample.lat;
+    const point = map.project(lngLatScratch);
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      continue;
+    }
+    const dx = point.x - cursorX;
+    const dy = point.y - cursorY;
+    const distanceSq = dx * dx + dy * dy;
+    if (distanceSq < nearestDistanceSq) {
+      nearestDistanceSq = distanceSq;
+      nearestIndex = index;
+    }
+  }
+
+  return nearestIndex;
 }
