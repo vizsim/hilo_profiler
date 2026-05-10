@@ -8,12 +8,9 @@ export function createMapterhornClient() {
 
   return {
     async sampleProfile(samples) {
-      const elevations = [];
-
-      for (const sample of samples) {
-        const elevation = await sampleElevationAtPoint(sample.lng, sample.lat);
-        elevations.push(elevation);
-      }
+      const elevations = await Promise.all(
+        samples.map((sample) => sampleElevationAtPoint(sample.lng, sample.lat))
+      );
 
       return {
         elevations,
