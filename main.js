@@ -36,6 +36,7 @@ const eliBasemapButtonDetail = document.getElementById('eli-basemap-button-detai
 const eliBasemapMenu = document.getElementById('eli-basemap-menu');
 const routingPanel = document.getElementById('routing-panel');
 const routingPanelToggle = document.getElementById('routing-panel-toggle');
+let latestUiState = appState.getState();
 
 basemapButtons.forEach((button) => {
   button.addEventListener('click', () => {
@@ -104,9 +105,34 @@ routingPanelToggle.addEventListener('click', () => {
   routingPanelToggle.setAttribute('title', nextCollapsed ? 'Panel erweitern' : 'Panel minimieren');
 });
 
+const updateBuildingSourceStatus = () => {
+  if (!buildingSourceStatus) {
+    return;
+  }
+
+  const buildingsSupported = BUILDING_SUPPORTED_BASEMAPS.has(latestUiState.basemap);
+  if (!latestUiState.buildingsEnabled) {
+    buildingSourceStatus.hidden = true;
+    return;
+  }
+
+  buildingSourceStatus.hidden = false;
+
+  if (!buildingsSupported) {
+    buildingSourceStatus.textContent = 'Mit dieser Karte nicht verfuegbar.';
+    return;
+  }
+
+  buildingSourceStatus.textContent = mapApi.map.getZoom() >= 14 ? 'Gebäude sichtbar.' : 'Ab Zoom 14 sichtbar.';
+};
+
 syncMapSettingsToggleState(mapSettingsPanel.classList.contains('is-collapsed'));
+updateBuildingSourceStatus();
+
+mapApi.map.on('zoom', updateBuildingSourceStatus);
 
 appState.subscribe((state) => {
+  latestUiState = state;
   if (routingNote) {
     const showRoutingNote = !state.startPoint && !state.endPoint && !state.profileData && !state.isLoading && !state.error;
     routingNote.hidden = !showRoutingNote;
@@ -155,18 +181,7 @@ appState.subscribe((state) => {
     button.classList.toggle('selected', button.dataset.buildingSource === state.buildingSource);
   });
 
-  const buildingsSupported = BUILDING_SUPPORTED_BASEMAPS.has(state.basemap);
-  if (buildingSourceStatus) {
-    if (state.buildingsEnabled && buildingsSupported) {
-      buildingSourceStatus.textContent = 'OSM/OpenFreeMap aktiv. Extrusionen erscheinen ab Zoom 14 auf Vector- und Raster-Basemaps.';
-    } else if (state.buildingsEnabled) {
-      buildingSourceStatus.textContent = 'Phase 1 ist aktiv, wird mit der aktuellen Basemap aber noch nicht angezeigt.';
-    } else if (buildingsSupported) {
-      buildingSourceStatus.textContent = 'Phase 1 nutzt OSM/OpenFreeMap. Aktivieren, um Gebäude ab Zoom 14 auch über Raster-Basemaps zu extrudieren.';
-    } else {
-      buildingSourceStatus.textContent = 'Phase 1 unterstützt die aktuellen Basemaps noch nicht.';
-    }
-  }
+  updateBuildingSourceStatus();
 });
 
 function showEliBasemapMenu(localImagery, clientX, clientY) {
