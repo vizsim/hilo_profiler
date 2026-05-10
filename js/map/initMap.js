@@ -2,6 +2,7 @@ import { applySelection, removeWaypointSelection, toPoint, updateWaypointSelecti
 import { showWaypointContextMenu } from '../ui/waypointContextMenu.js';
 import { createEliBasemapController } from './eliBasemapController.js';
 import { createBuildingLayerController } from './buildingLayerController.js';
+import { createCustomLineLayer } from './customLineLayer.js';
 
 const BASEMAPS = {
   positron: {
@@ -72,7 +73,7 @@ const CUSTOM_RUNTIME_LAYER_IDS = new Set([
   'eli-local-imagery-layer',
   'hilo-3d-buildings',
   'selection-line',
-  'selection-line-buildings',
+  'selection-line-overlay',
   'selection-line-hit',
   'hillshade-layer',
 ]);
@@ -92,44 +93,46 @@ function getDirectLineKey(directLine) {
   return directLine.coordinates.map((coordinate) => coordinate.join(',')).join('|');
 }
 
-function buildOverBuildingLineFeatures(profileData) {
-  const samples = profileData?.samples;
-  const offsets = profileData?.buildingOffsets;
-  if (!samples?.length || !offsets?.length || samples.length < 2) {
-    return [];
+const ROUTE_COLOR_DEFAULT = '#145e4b';
+const ROUTE_COLOR_BUILDING = '#d97706';
+
+function buildRouteOverlayData(state) {
+  const directLineCoords = state.directLine?.coordinates;
+  if (!Array.isArray(directLineCoords) || directLineCoords.length < 2) {
+    return null;
   }
 
-  const features = [];
-  let currentCoords = null;
+  const samples = state.profileData?.samples;
+  if (!Array.isArray(samples) || samples.length < 2) {
+    return {
+      anchors: directLineCoords,
+      vertexT: [0, 1],
+      segmentColors: null,
+    };
+  }
 
+  const offsets = state.profileData.buildingOffsets || [];
+  const totalDistance = samples[samples.length - 1].distanceMeters;
+  if (!(totalDistance > 0)) {
+    return {
+      anchors: directLineCoords,
+      vertexT: [0, 1],
+      segmentColors: null,
+    };
+  }
+
+  const vertexT = samples.map((sample) => Math.max(0, Math.min(1, sample.distanceMeters / totalDistance)));
+  const segmentColors = new Array(samples.length - 1);
   for (let index = 0; index < samples.length - 1; index += 1) {
     const overBuilding = (offsets[index] > 0) || (offsets[index + 1] > 0);
-    if (overBuilding) {
-      if (!currentCoords) {
-        currentCoords = [[samples[index].lng, samples[index].lat]];
-      }
-      currentCoords.push([samples[index + 1].lng, samples[index + 1].lat]);
-    } else if (currentCoords) {
-      if (currentCoords.length >= 2) {
-        features.push({
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: currentCoords },
-          properties: {},
-        });
-      }
-      currentCoords = null;
-    }
+    segmentColors[index] = overBuilding ? ROUTE_COLOR_BUILDING : ROUTE_COLOR_DEFAULT;
   }
 
-  if (currentCoords && currentCoords.length >= 2) {
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: currentCoords },
-      properties: {},
-    });
-  }
-
-  return features;
+  return {
+    anchors: directLineCoords,
+    vertexT,
+    segmentColors,
+  };
 }
 
 export function initMap(appState) {
@@ -162,6 +165,26 @@ export function initMap(appState) {
   });
   buildingLayerController = createBuildingLayerController(map, appState);
 
+  const routeLineOverlay = createCustomLineLayer({
+    id: 'selection-line-overlay',
+    defaultColor: '#145e4b',
+    widthPixels: 4,
+    opacity: 0.95,
+  });
+
+  const ensureCustomLineOverlays = () => {
+    if (!map.getStyle()) {
+      return;
+    }
+    if (!map.getLayer(routeLineOverlay.id)) {
+      map.addLayer(routeLineOverlay);
+    }
+  };
+
+  const refreshCustomLineOverlays = (state) => {
+    routeLineOverlay.setData(buildRouteOverlayData(state));
+  };
+
   map.addControl(new maplibregl.NavigationControl(), 'bottom-left');
   registerMissingStyleImageFallbacks(map);
 
@@ -184,6 +207,8 @@ export function initMap(appState) {
     const skyDelay = map[STYLE_SWITCH_PENDING_KEY] ? 300 : 0;
     hydrateStyleState(map, latestState, eliBasemapController, buildingLayerController, { skyDelay });
     map[STYLE_SWITCH_PENDING_KEY] = false;
+    ensureCustomLineOverlays();
+    refreshCustomLineOverlays(latestState);
     if (!lineHoverRegistered && map.getLayer('selection-line-hit')) {
       registerLineHoverHandlers(map, appState);
       lineHoverRegistered = true;
@@ -226,13 +251,8 @@ export function initMap(appState) {
       );
     }
 
-    const buildingsLineSource = map.getSource('selection-line-buildings');
-    if (buildingsLineSource && (profileDataChanged || directLineChanged)) {
-      buildingsLineSource.setData(
-        buildFeatureCollection(
-          state.directLine ? buildOverBuildingLineFeatures(state.profileData) : []
-        )
-      );
+    if (directLineChanged || profileDataChanged) {
+      refreshCustomLineOverlays(state);
     }
 
     markerState = syncPointMarkers(map, markerState, state, appState);
@@ -361,13 +381,6 @@ function ensureMapArtifacts(map, state) {
     });
   }
 
-  if (!map.getSource('selection-line-buildings')) {
-    map.addSource('selection-line-buildings', {
-      type: 'geojson',
-      data: buildFeatureCollection(),
-    });
-  }
-
   if (!map.getSource('terrain-dem')) {
     map.addSource('terrain-dem', {
       type: 'raster-dem',
@@ -392,46 +405,17 @@ function ensureMapArtifacts(map, state) {
 
   ensureRasterBasemapLayers(map);
 
-  if (!map.getLayer('selection-line')) {
-    map.addLayer({
-      id: 'selection-line',
-      type: 'line',
-      source: 'selection-line',
-      paint: {
-        'line-color': '#145e4b',
-        'line-width': 4,
-        'line-opacity': 0.88,
-      },
-    });
-  }
-
   if (!map.getLayer('hillshade-layer')) {
-    map.addLayer(
-      {
-        id: 'hillshade-layer',
-        type: 'hillshade',
-        source: 'hillshade-dem',
-        layout: {
-          visibility: state.hillshadeEnabled ? 'visible' : 'none',
-        },
-        paint: {
-          'hillshade-exaggeration': 0.35,
-          'hillshade-illumination-anchor': 'map',
-        },
-      },
-      'selection-line'
-    );
-  }
-
-  if (!map.getLayer('selection-line-buildings')) {
     map.addLayer({
-      id: 'selection-line-buildings',
-      type: 'line',
-      source: 'selection-line-buildings',
+      id: 'hillshade-layer',
+      type: 'hillshade',
+      source: 'hillshade-dem',
+      layout: {
+        visibility: state.hillshadeEnabled ? 'visible' : 'none',
+      },
       paint: {
-        'line-color': '#d97706',
-        'line-width': 4,
-        'line-opacity': 0.95,
+        'hillshade-exaggeration': 0.35,
+        'hillshade-illumination-anchor': 'map',
       },
     });
   }
@@ -465,15 +449,6 @@ function ensureMapArtifacts(map, state) {
               },
             ]
           : []
-      )
-    );
-  }
-
-  const refreshedBuildingsLineSource = map.getSource('selection-line-buildings');
-  if (refreshedBuildingsLineSource) {
-    refreshedBuildingsLineSource.setData(
-      buildFeatureCollection(
-        state.directLine ? buildOverBuildingLineFeatures(state.profileData) : []
       )
     );
   }
