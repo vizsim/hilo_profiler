@@ -106,24 +106,20 @@ function buildRouteOverlayData(state) {
 
   const samples = state.profileData?.samples;
   if (!Array.isArray(samples) || samples.length < 2) {
+    // No profile yet — fall back to the sparse directLine. Default color, no
+    // segment-color overrides.
     return {
-      anchors: directLineCoords,
-      vertexT: [0, 1],
+      vertices: directLineCoords,
       segmentColors: null,
     };
   }
 
   const offsets = state.profileData.buildingOffsets || [];
-  const totalDistance = samples[samples.length - 1].distanceMeters;
-  if (!(totalDistance > 0)) {
-    return {
-      anchors: directLineCoords,
-      vertexT: [0, 1],
-      segmentColors: null,
-    };
+  const vertices = new Array(samples.length);
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index];
+    vertices[index] = [sample.lng, sample.lat];
   }
-
-  const vertexT = samples.map((sample) => Math.max(0, Math.min(1, sample.distanceMeters / totalDistance)));
   const segmentColors = new Array(samples.length - 1);
   for (let index = 0; index < samples.length - 1; index += 1) {
     const overBuilding = (offsets[index] > 0) || (offsets[index + 1] > 0);
@@ -131,8 +127,7 @@ function buildRouteOverlayData(state) {
   }
 
   return {
-    anchors: directLineCoords,
-    vertexT,
+    vertices,
     segmentColors,
   };
 }

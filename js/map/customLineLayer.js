@@ -1,19 +1,18 @@
 // Custom MapLibre layer that renders a thick polyline as triangles in screen
 // space, always on top of the map (no depth test, no terrain RTT drape).
 //
-// Input is an anchor list (lng/lat waypoints) and per-vertex parametric `t`
-// values (0..1) along the cumulative anchor distance. Only the anchors are
-// projected via map.project(); intermediate vertices are interpolated in
-// screen space. This keeps the rendered line straight between anchors no
-// matter the camera pitch or terrain elevation, while still allowing
-// per-segment coloring (e.g. green vs orange where the line crosses
-// buildings).
+// Each vertex is a lng/lat pair, projected per frame via
+// `map.transform.locationPoint(lngLat)` — the same Mercator pipeline as
+// `map.project`, but without the terrain-elevation adjustment. This keeps the
+// rendered line on the ground plane (no terrain zigzag) while still
+// respecting camera pitch/zoom — perspective foreshortening lands every
+// sample at the correct screen position, so per-segment color boundaries
+// align with what is rendered on the map at the same lng/lat.
 //
-// Per-frame allocations are avoided: scratch buffers (anchor screen coords,
-// interpolated vertices, miters, mesh) live in the layer closure and grow
-// only when the input gets bigger. Segment colors are accepted pre-parsed as
-// `[r, g, b]` floats so the render loop can write them straight into the
-// vertex buffer without string parsing.
+// Per-frame allocations are avoided: scratch buffers (screen coords, miters,
+// mesh) live in the layer closure and grow only when the input gets bigger.
+// Segment colors are accepted pre-parsed as `[r, g, b]` floats so the render
+// loop can write them straight into the vertex buffer without string parsing.
 
 const VERTEX_SHADER_SOURCE = `
   attribute vec2 a_position;
@@ -43,7 +42,6 @@ const FLOATS_PER_VERTEX = 5;
 const VERTICES_PER_SEGMENT = 6;
 const MITER_DOT_FLOOR = 0.2;
 const MIN_VERTEX_COUNT_FOR_DRAW = 3;
-const EARTH_RADIUS_METERS = 6378137;
 const EPSILON = 1e-4;
 
 export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opacity = 1 }) {
@@ -61,8 +59,6 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
   // Persistent scratch buffers — grown on demand, never shrunk. Reused every
   // frame to avoid GC churn during pan/zoom/pitch animations.
   let positions = new Float32Array(0);
-  let anchorScreenX = new Float32Array(0);
-  let anchorScreenY = new Float32Array(0);
   let screenX = new Float32Array(0);
   let screenY = new Float32Array(0);
   let miterX = new Float32Array(0);
@@ -74,18 +70,12 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
     renderingMode: '3d',
 
     setData(data) {
-      const anchors = data?.anchors;
-      if (!Array.isArray(anchors) || anchors.length < 2) {
+      const vertices = data?.vertices;
+      if (!Array.isArray(vertices) || vertices.length < 2) {
         lineData = null;
       } else {
-        const anchorCumT = computeAnchorCumulativeT(anchors);
-        const vertexT = Array.isArray(data.vertexT) && data.vertexT.length >= 2
-          ? data.vertexT
-          : [0, 1];
         lineData = {
-          anchors,
-          anchorCumT,
-          vertexT,
+          vertices,
           segmentColors: Array.isArray(data.segmentColors) ? data.segmentColors : null,
         };
       }
@@ -146,12 +136,9 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
       }
 
       const halfWidth = Math.max(0.5, widthPixels / 2);
-      const anchors = lineData.anchors;
-      const anchorCumT = lineData.anchorCumT;
-      const vertexT = lineData.vertexT;
+      const vertices = lineData.vertices;
       const segmentColors = lineData.segmentColors;
-      const anchorCount = anchors.length;
-      const vertexCount = vertexT.length;
+      const vertexCount = vertices.length;
       const segmentCount = vertexCount - 1;
       if (segmentCount < 1) {
         return;
@@ -159,8 +146,6 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
 
       // Grow scratch buffers if the input got bigger than what we've seen so
       // far. ensureCapacity returns a (possibly reallocated) Float32Array.
-      anchorScreenX = ensureCapacity(anchorScreenX, anchorCount);
-      anchorScreenY = ensureCapacity(anchorScreenY, anchorCount);
       screenX = ensureCapacity(screenX, vertexCount);
       screenY = ensureCapacity(screenY, vertexCount);
       miterX = ensureCapacity(miterX, vertexCount);
@@ -168,39 +153,22 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
       const meshFloats = segmentCount * VERTICES_PER_SEGMENT * FLOATS_PER_VERTEX;
       positions = ensureCapacity(positions, meshFloats);
 
-      // Project anchors once per frame.
-      for (let index = 0; index < anchorCount; index += 1) {
-        const coord = anchors[index];
-        const projected = mapRef.project({ lng: coord[0], lat: coord[1] });
-        anchorScreenX[index] = Number.isFinite(projected.x) ? projected.x : 0;
-        anchorScreenY[index] = Number.isFinite(projected.y) ? projected.y : 0;
-      }
-
-      // Linearly interpolate every polyline vertex along the anchor sequence
-      // in screen space. vertexT is monotonically non-decreasing, so we walk
-      // anchorCumT once.
-      let segIndex = 0;
-      const segLast = anchorCumT.length - 2;
+      // Project each sample with terrain-agnostic projection so the rendered
+      // line lives on the Mercator ground plane (no terrain elevation), while
+      // still picking up camera pitch/zoom/bearing through the pixelMatrix.
+      // Falls back to map.project if transform.locationPoint is unavailable.
+      const transform = mapRef.transform;
+      const useTransformLocationPoint = transform && typeof transform.locationPoint === 'function';
+      const lngLatScratch = { lng: 0, lat: 0 };
       for (let index = 0; index < vertexCount; index += 1) {
-        let t = vertexT[index];
-        if (t < 0) {
-          t = 0;
-        } else if (t > 1) {
-          t = 1;
-        }
-        while (segIndex < segLast && anchorCumT[segIndex + 1] < t) {
-          segIndex += 1;
-        }
-        const segStart = anchorCumT[segIndex];
-        const segEnd = anchorCumT[segIndex + 1];
-        const span = segEnd - segStart;
-        const localT = span > 1e-9 ? (t - segStart) / span : 0;
-        const ax = anchorScreenX[segIndex];
-        const ay = anchorScreenY[segIndex];
-        const bx = anchorScreenX[segIndex + 1];
-        const by = anchorScreenY[segIndex + 1];
-        screenX[index] = ax + localT * (bx - ax);
-        screenY[index] = ay + localT * (by - ay);
+        const coord = vertices[index];
+        lngLatScratch.lng = coord[0];
+        lngLatScratch.lat = coord[1];
+        const projected = useTransformLocationPoint
+          ? transform.locationPoint(lngLatScratch)
+          : mapRef.project(lngLatScratch);
+        screenX[index] = Number.isFinite(projected.x) ? projected.x : 0;
+        screenY[index] = Number.isFinite(projected.y) ? projected.y : 0;
       }
 
       computeMitersInPlace(screenX, screenY, vertexCount, halfWidth, miterX, miterY);
@@ -340,31 +308,6 @@ function parseHexColor(hex) {
     parseInt(hex.slice(3, 5), 16) / 255,
     parseInt(hex.slice(5, 7), 16) / 255,
   ];
-}
-
-function haversineMeters(a, b) {
-  const lng1 = (a[0] * Math.PI) / 180;
-  const lat1 = (a[1] * Math.PI) / 180;
-  const lng2 = (b[0] * Math.PI) / 180;
-  const lat2 = (b[1] * Math.PI) / 180;
-  const dLat = lat2 - lat1;
-  const dLng = lng2 - lng1;
-  const sinHalfLat = Math.sin(dLat / 2);
-  const sinHalfLng = Math.sin(dLng / 2);
-  const h = sinHalfLat * sinHalfLat + Math.cos(lat1) * Math.cos(lat2) * sinHalfLng * sinHalfLng;
-  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-function computeAnchorCumulativeT(anchors) {
-  const cumulative = [0];
-  for (let index = 0; index < anchors.length - 1; index += 1) {
-    cumulative.push(cumulative[index] + haversineMeters(anchors[index], anchors[index + 1]));
-  }
-  const total = cumulative[cumulative.length - 1];
-  if (total <= 0) {
-    return anchors.map((_, index) => index / Math.max(1, anchors.length - 1));
-  }
-  return cumulative.map((value) => value / total);
 }
 
 function computeMitersInPlace(screenX, screenY, count, halfWidth, miterX, miterY) {
