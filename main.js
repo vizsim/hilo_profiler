@@ -118,14 +118,19 @@ const updateBuildingSourceStatus = () => {
     return;
   }
 
-  buildingSourceStatus.hidden = false;
-
   if (!buildingsSupported) {
+    buildingSourceStatus.hidden = false;
     buildingSourceStatus.textContent = 'Mit dieser Karte nicht verfuegbar.';
     return;
   }
 
-  buildingSourceStatus.textContent = mapApi.map.getZoom() >= 14 ? 'Gebäude sichtbar.' : 'Ab Zoom 14 sichtbar.';
+  if (mapApi.map.getZoom() >= 14) {
+    buildingSourceStatus.hidden = true;
+    return;
+  }
+
+  buildingSourceStatus.hidden = false;
+  buildingSourceStatus.textContent = 'Ab Zoom 14 sichtbar.';
 };
 
 syncMapSettingsToggleState(mapSettingsPanel.classList.contains('is-collapsed'));
