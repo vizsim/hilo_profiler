@@ -30,27 +30,37 @@ const BASEMAPS = {
   },
 };
 
-const SKY_STYLE = {
+const DEFAULT_SKY_STYLE = {
   'sky-color': '#199EF3',
-  'sky-horizon-blend': 0.5,
-  'horizon-color': '#ffffff',
-  'horizon-fog-blend': 0.5,
-  'fog-color': '#0000ff',
-  'fog-ground-blend': 0.5,
+  'sky-horizon-blend': 0.7,
+  'horizon-color': '#f0f8ff',
+  'horizon-fog-blend': 0.8,
+  'fog-color': '#2c7fb8',
+  'fog-ground-blend': 0.9,
   'atmosphere-blend': [
     'interpolate',
     ['linear'],
     ['zoom'],
     0,
     1,
-    10,
-    1,
     12,
     0,
   ],
 };
 
-const SKY_SYNC_PENDING_KEY = '__hiloSkySyncPending';
+const SKY_STYLES = {
+  dark: {
+    'sky-color': '#1e2b58',
+    'sky-horizon-blend': 0.8,
+    'horizon-color': '#614cbf',
+    'horizon-fog-blend': 0.8,
+    'fog-color': '#D4D6D8',
+    'fog-ground-blend': 0.5,
+  },
+};
+
+const SKY_SYNC_TIMEOUT_KEY = '__hiloSkySyncTimeout';
+const SKY_SYNC_STATE_KEY = '__hiloSkySyncState';
 
 function buildFeatureCollection(features = []) {
   return {
@@ -291,33 +301,50 @@ function applyTerrainState(map, state) {
     }
   }
 
-  syncSkyState(map);
+  scheduleSkyState(map, state);
 }
 
-function syncSkyState(map) {
+function scheduleSkyState(map, state) {
   if (typeof map.setSky !== 'function') {
     return;
   }
 
-  const applySkyForCurrentTerrain = () => {
-    map.setSky(map.getTerrain() ? SKY_STYLE : undefined);
+  map[SKY_SYNC_STATE_KEY] = {
+    terrainEnabled: state.terrainEnabled,
+    basemap: state.basemap,
+    retriesRemaining: 24,
   };
 
-  if (map.isStyleLoaded()) {
-    applySkyForCurrentTerrain();
+  if (map[SKY_SYNC_TIMEOUT_KEY]) {
+    clearTimeout(map[SKY_SYNC_TIMEOUT_KEY]);
+    map[SKY_SYNC_TIMEOUT_KEY] = null;
   }
 
-  if (map[SKY_SYNC_PENDING_KEY]) {
-    return;
-  }
-
-  map[SKY_SYNC_PENDING_KEY] = true;
-  map.once('idle', () => {
-    map[SKY_SYNC_PENDING_KEY] = false;
-    if (map.isStyleLoaded()) {
-      applySkyForCurrentTerrain();
+  const tryApplySky = () => {
+    const pendingState = map[SKY_SYNC_STATE_KEY];
+    if (!pendingState) {
+      return;
     }
-  });
+
+    if (!map.isStyleLoaded()) {
+      if (pendingState.retriesRemaining <= 0) {
+        return;
+      }
+
+      pendingState.retriesRemaining -= 1;
+      map[SKY_SYNC_TIMEOUT_KEY] = setTimeout(tryApplySky, 250);
+      return;
+    }
+
+    map[SKY_SYNC_TIMEOUT_KEY] = null;
+    map.setSky(pendingState.terrainEnabled ? getSkyStyleForBasemap(pendingState.basemap) : undefined);
+  };
+
+  tryApplySky();
+}
+
+function getSkyStyleForBasemap(basemap) {
+  return SKY_STYLES[basemap] ?? DEFAULT_SKY_STYLE;
 }
 
 function applyDisplayedBasemap(map, state) {

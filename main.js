@@ -1,5 +1,5 @@
 import { createAppState } from './js/state/appState.js';
-import { initMap } from './js/map/initMap.js';
+import { initMap } from './js/map/initMap.js?v=20260510a';
 import { setupPointSelection } from './js/map/pointSelection.js';
 import { setupProfileView } from './js/profile/profileView.js?v=20260504c';
 import { createMapterhornClient } from './js/elevation/mapterhornClient.js';
