@@ -1,6 +1,7 @@
 import { applySelection, removeWaypointSelection, toPoint, updateWaypointSelection } from './pointSelection.js';
 import { showWaypointContextMenu } from '../ui/waypointContextMenu.js';
 import { createEliBasemapController } from './eliBasemapController.js';
+import { createBuildingLayerController } from './buildingLayerController.js';
 
 const BASEMAPS = {
   positron: {
@@ -92,6 +93,7 @@ export function initMap(appState) {
     maxPitch: 80,
   });
   const eliBasemapController = createEliBasemapController(map, appState);
+  const buildingLayerController = createBuildingLayerController(map, appState);
 
   map.addControl(new maplibregl.NavigationControl(), 'bottom-left');
   registerMissingStyleImageFallbacks(map);
@@ -116,6 +118,7 @@ export function initMap(appState) {
     restoreMapVisualState(map, latestState, { skyDelay });
     map[STYLE_SWITCH_PENDING_KEY] = false;
     eliBasemapController.onStyleLoaded();
+    buildingLayerController.onStyleLoaded();
     if (!lineHoverRegistered && map.getLayer('selection-line-hit')) {
       registerLineHoverHandlers(map, appState);
       lineHoverRegistered = true;
@@ -156,10 +159,12 @@ export function initMap(appState) {
       clearScheduledSkyState(map);
       map[STYLE_SWITCH_PENDING_KEY] = true;
       eliBasemapController.prepareForStyleChange();
+      buildingLayerController.prepareForStyleChange();
       map.setStyle(BASEMAPS[state.basemap].style, { diff: false });
     } else {
       restoreMapVisualState(map, state);
       eliBasemapController.applyForState(state);
+      buildingLayerController.applyForState(state);
     }
 
     lastBasemap = state.basemap;

@@ -1,5 +1,7 @@
 const initialState = {
   basemap: 'positron',
+  buildingsEnabled: false,
+  buildingSource: 'osm',
   localImagery: {
     loading: true,
     availableCount: 0,
@@ -142,6 +144,18 @@ export function createAppState() {
       update((currentState) => ({
         ...currentState,
         hillshadeEnabled,
+      }));
+    },
+    setBuildingsEnabled(buildingsEnabled) {
+      update((currentState) => ({
+        ...currentState,
+        buildingsEnabled,
+      }));
+    },
+    setBuildingSource(buildingSource) {
+      update((currentState) => ({
+        ...currentState,
+        buildingSource,
       }));
     },
     setPoints({ startPoint, endPoint, waypoints = [], directLine, lineDistanceMeters, sampleCount }) {

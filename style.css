@@ -622,6 +622,11 @@ button:active {
   gap: 8px;
 }
 
+.building-options {
+  display: grid;
+  gap: 8px;
+}
+
 .terrain-row {
   display: flex;
   align-items: center;
@@ -643,6 +648,79 @@ button:active {
   margin: 0;
   font-size: 12px;
   line-height: 1.25;
+  color: var(--text-secondary);
+}
+
+.building-source-card {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+}
+
+.building-source-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.building-source-header strong {
+  font-size: 13px;
+}
+
+.building-source-caption {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.building-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.building-source-btn {
+  min-height: auto;
+  padding: 9px 10px;
+  background: #ffffff;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.building-source-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+
+.building-source-btn.is-disabled,
+.building-source-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+
+.building-source-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.building-source-meta {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--text-secondary);
+}
+
+.building-source-status {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
   color: var(--text-secondary);
 }
 
@@ -1008,6 +1086,10 @@ button:active {
   .basemap-meta,
   .basemap-detail {
     font-size: 10px;
+  }
+
+  .building-source-grid {
+    grid-template-columns: 1fr;
   }
 
   .panel-footer {

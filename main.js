@@ -7,6 +7,8 @@ import { setupDirectProfileController } from './js/elevation/directProfileContro
 import { setupContextMenu } from './js/ui/contextMenu.js';
 import { setupPhotonGeocoder } from './js/utils/geocoder.js';
 
+const BUILDING_SUPPORTED_BASEMAPS = new Set(['positron', 'dark']);
+
 const appState = createAppState();
 const mapApi = initMap(appState);
 const mapterhornClient = createMapterhornClient();
@@ -21,6 +23,9 @@ const resetButton = document.getElementById('reset-points');
 const basemapButtons = Array.from(document.querySelectorAll('.basemap-btn'));
 const terrainToggle = document.getElementById('toggle-terrain');
 const hillshadeToggle = document.getElementById('toggle-hillshade');
+const buildingToggle = document.getElementById('toggle-buildings');
+const buildingSourceButtons = Array.from(document.querySelectorAll('[data-building-source]'));
+const buildingSourceStatus = document.getElementById('building-source-status');
 const mapSettingsToggle = document.getElementById('map-settings-toggle');
 const mapSettingsPanel = document.getElementById('map-settings-panel');
 const mapSettingsPanelToggle = document.getElementById('map-settings-panel-toggle');
@@ -48,6 +53,21 @@ terrainToggle.addEventListener('change', (event) => {
 
 hillshadeToggle.addEventListener('change', (event) => {
   appState.setHillshadeEnabled(event.target.checked);
+});
+
+buildingToggle.addEventListener('change', (event) => {
+  appState.setBuildingsEnabled(event.target.checked);
+});
+
+buildingSourceButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    if (button.disabled) {
+      return;
+    }
+
+    appState.setBuildingSource(button.dataset.buildingSource);
+    appState.setBuildingsEnabled(true);
+  });
 });
 
 const syncMapSettingsToggleState = (collapsed) => {
@@ -129,6 +149,24 @@ appState.subscribe((state) => {
 
   terrainToggle.checked = state.terrainEnabled;
   hillshadeToggle.checked = state.hillshadeEnabled;
+  buildingToggle.checked = state.buildingsEnabled;
+
+  buildingSourceButtons.forEach((button) => {
+    button.classList.toggle('selected', button.dataset.buildingSource === state.buildingSource);
+  });
+
+  const buildingsSupported = BUILDING_SUPPORTED_BASEMAPS.has(state.basemap);
+  if (buildingSourceStatus) {
+    if (state.buildingsEnabled && buildingsSupported) {
+      buildingSourceStatus.textContent = 'OSM/OpenFreeMap aktiv. Extrusionen erscheinen ab Zoom 14 auf Positron und Dark.';
+    } else if (state.buildingsEnabled) {
+      buildingSourceStatus.textContent = 'Phase 1 ist aktiv, wird mit der aktuellen Basemap aber noch nicht angezeigt. Wechsel zu Positron oder Dark.';
+    } else if (buildingsSupported) {
+      buildingSourceStatus.textContent = 'Phase 1 nutzt OSM/OpenFreeMap. Aktivieren, um Gebäude ab Zoom 14 zu extrudieren.';
+    } else {
+      buildingSourceStatus.textContent = 'Phase 1 unterstützt vorerst Positron und Dark. Satellite folgt später als eigener Schritt.';
+    }
+  }
 });
 
 function showEliBasemapMenu(localImagery, clientX, clientY) {
