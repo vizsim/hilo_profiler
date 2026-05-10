@@ -182,7 +182,7 @@ export function initMap(appState) {
     routeLineOverlay.setData(buildRouteOverlayData(state));
   };
 
-  map.addControl(new maplibregl.NavigationControl(), 'bottom-left');
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-left');
   registerMissingStyleImageFallbacks(map);
 
   let hoverMarker = null;
