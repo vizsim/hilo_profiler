@@ -161,60 +161,27 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
       const meshFloats = segmentCount * VERTICES_PER_SEGMENT * FLOATS_PER_VERTEX;
       positions = ensureCapacity(positions, meshFloats);
 
-      // Project each sample. We do the matrix multiply manually so we can
-      // observe the clip-space w; samples with w <= 0 lie behind the
-      // pitched camera plane and would otherwise yield garbage screen coords
-      // after the perspective divide. Such samples are flagged invalid so
-      // adjacent segments get skipped during meshing.
-      const transform = mapRef.transform;
-      const pixelMatrix = transform && transform.pixelMatrix;
-      const hasManualProjection = pixelMatrix
-        && transform.worldSize > 0
-        && typeof transform.locationCoordinate === 'function';
-      const useTransformLocationPoint = !hasManualProjection
-        && transform
-        && typeof transform.locationPoint === 'function';
+      // Project each sample with the public terrain-aware `map.project()` so
+      // the line drapes on the terrain surface — no floating z-axis offset
+      // between the rendered line and the ground when pitching/zooming. The
+      // generous sanity bound catches perspective-divide blow-ups (samples
+      // at or behind the camera plane) so we don't draw phantom triangles
+      // that span the whole viewport.
       const lngLatScratch = { lng: 0, lat: 0 };
+
       for (let index = 0; index < vertexCount; index += 1) {
         const coord = vertices[index];
         lngLatScratch.lng = coord[0];
         lngLatScratch.lat = coord[1];
 
-        if (hasManualProjection) {
-          const merc = transform.locationCoordinate(lngLatScratch);
-          const ws = transform.worldSize;
-          const wx = merc.x * ws;
-          const wy = merc.y * ws;
-          const m = pixelMatrix;
-          const w = m[3] * wx + m[7] * wy + m[15];
-          if (w > 1e-6) {
-            const sx = (m[0] * wx + m[4] * wy + m[12]) / w;
-            const sy = (m[1] * wx + m[5] * wy + m[13]) / w;
-            if (Number.isFinite(sx) && Number.isFinite(sy)) {
-              screenX[index] = sx;
-              screenY[index] = sy;
-              valid[index] = 1;
-              continue;
-            }
-          }
-          screenX[index] = 0;
-          screenY[index] = 0;
-          valid[index] = 0;
-        } else {
-          const projected = useTransformLocationPoint
-            ? transform.locationPoint(lngLatScratch)
-            : mapRef.project(lngLatScratch);
-          const px = projected.x;
-          const py = projected.y;
-          const finite = Number.isFinite(px) && Number.isFinite(py);
-          // Generous sanity bound — anything past this is almost certainly a
-          // perspective-divide blow-up rather than a legitimate off-screen
-          // coord we still want to draw to the viewport edge.
-          const sane = finite && Math.abs(px) < 100000 && Math.abs(py) < 100000;
-          screenX[index] = sane ? px : 0;
-          screenY[index] = sane ? py : 0;
-          valid[index] = sane ? 1 : 0;
-        }
+        const projected = mapRef.project(lngLatScratch);
+        const px = projected.x;
+        const py = projected.y;
+        const sane = Number.isFinite(px) && Number.isFinite(py)
+          && Math.abs(px) < 100000 && Math.abs(py) < 100000;
+        screenX[index] = sane ? px : 0;
+        screenY[index] = sane ? py : 0;
+        valid[index] = sane ? 1 : 0;
       }
 
       computeMitersInPlace(screenX, screenY, valid, vertexCount, halfWidth, miterX, miterY);

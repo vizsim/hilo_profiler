@@ -3,6 +3,7 @@ import { showWaypointContextMenu } from '../ui/waypointContextMenu.js';
 import { createEliBasemapController } from './eliBasemapController.js';
 import { createBuildingLayerController } from './buildingLayerController.js';
 import { createCustomLineLayer } from './customLineLayer.js';
+import { projectLngLatToScreen } from './screenProjection.js';
 
 const BASEMAPS = {
   positron: {
@@ -667,17 +668,18 @@ function findNearestSampleScreenSpace(samples, map, cursorX, cursorY, maxPixelDi
   let nearestIndex = null;
   let nearestDistanceSq = maxDistanceSq;
   const lngLatScratch = { lng: 0, lat: 0 };
+  const projected = { x: 0, y: 0, valid: false };
 
   for (let index = 0; index < samples.length; index += 1) {
     const sample = samples[index];
     lngLatScratch.lng = sample.lng;
     lngLatScratch.lat = sample.lat;
-    const point = map.project(lngLatScratch);
-    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    projectLngLatToScreen(map, lngLatScratch, projected);
+    if (!projected.valid) {
       continue;
     }
-    const dx = point.x - cursorX;
-    const dy = point.y - cursorY;
+    const dx = projected.x - cursorX;
+    const dy = projected.y - cursorY;
     const distanceSq = dx * dx + dy * dy;
     if (distanceSq < nearestDistanceSq) {
       nearestDistanceSq = distanceSq;
