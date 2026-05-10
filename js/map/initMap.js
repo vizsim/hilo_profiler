@@ -64,6 +64,15 @@ const SKY_SYNC_TIMEOUT_KEY = '__hiloSkySyncTimeout';
 const SKY_SYNC_STATE_KEY = '__hiloSkySyncState';
 const STYLE_SWITCH_PENDING_KEY = '__hiloStyleSwitchPending';
 const STYLE_REHYDRATE_TIMEOUT_KEY = '__hiloStyleRehydrateTimeout';
+const CUSTOM_RUNTIME_LAYER_IDS = new Set([
+  'osm-carto-layer',
+  'esri-imagery-layer',
+  'eli-local-imagery-layer',
+  'hilo-3d-buildings',
+  'selection-line',
+  'selection-line-hit',
+  'hillshade-layer',
+]);
 
 function buildFeatureCollection(features = []) {
   return {
@@ -93,8 +102,14 @@ export function initMap(appState) {
     maxZoom: 18,
     maxPitch: 80,
   });
-  const eliBasemapController = createEliBasemapController(map, appState);
-  const buildingLayerController = createBuildingLayerController(map, appState);
+  let buildingLayerController;
+  const eliBasemapController = createEliBasemapController(map, appState, {
+    onRasterLayerVisibilityChange: () => {
+      applyHostStyleLayerVisibility(map, latestState);
+      buildingLayerController?.applyForState(latestState);
+    },
+  });
+  buildingLayerController = createBuildingLayerController(map, appState);
 
   map.addControl(new maplibregl.NavigationControl(), 'bottom-left');
   registerMissingStyleImageFallbacks(map);
@@ -358,7 +373,25 @@ function ensureMapArtifacts(map, state) {
 
 function restoreMapVisualState(map, state, options = {}) {
   applyDisplayedBasemap(map, state);
+  applyHostStyleLayerVisibility(map, state);
   applyTerrainState(map, state, options);
+}
+
+function applyHostStyleLayerVisibility(map, state) {
+  const style = map.getStyle();
+  if (!style?.layers?.length) {
+    return;
+  }
+
+  const hideHostStyleLayers = state.basemap === 'eli-local' && Boolean(map.getLayer('eli-local-imagery-layer'));
+
+  style.layers.forEach((layer) => {
+    if (CUSTOM_RUNTIME_LAYER_IDS.has(layer.id)) {
+      return;
+    }
+
+    map.setLayoutProperty(layer.id, 'visibility', hideHostStyleLayers ? 'none' : 'visible');
+  });
 }
 
 function applyTerrainState(map, state, options = {}) {

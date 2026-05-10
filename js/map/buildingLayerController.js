@@ -1,6 +1,17 @@
 const BUILDING_SOURCE_ID = 'hilo-buildings-source';
 const BUILDING_LAYER_ID = 'hilo-3d-buildings';
 const BUILDING_VECTOR_SOURCE_URL = 'https://tiles.openfreemap.org/planet';
+const DEFAULT_BUILDING_OPACITY = 0.8;
+const DEFAULT_BUILDING_COLOR = 'hsl(35, 8%, 85%)';
+const BUILDING_OPACITY_BY_BASEMAP = {
+  'eli-local': 0.8,
+};
+const BUILDING_TERRAIN_OPACITY_BY_BASEMAP = {
+  'eli-local': 0.8,
+};
+const BUILDING_COLOR_BY_BASEMAP = {
+  'eli-local': 'rgba(248, 248, 244, 0.92)',
+};
 const BUILDING_SOURCES = {
   osm: {
     supportedBasemaps: ['positron', 'dark', 'osm', 'satellite', 'eli-local'],
@@ -10,7 +21,7 @@ const BUILDING_SOURCES = {
       type: 'fill-extrusion',
       minzoom: 14,
       paint: {
-        'fill-extrusion-color': 'hsl(35, 8%, 85%)',
+        'fill-extrusion-color': DEFAULT_BUILDING_COLOR,
         'fill-extrusion-height': {
           property: 'render_height',
           type: 'identity',
@@ -19,7 +30,7 @@ const BUILDING_SOURCES = {
           property: 'render_min_height',
           type: 'identity',
         },
-        'fill-extrusion-opacity': 0.8,
+        'fill-extrusion-opacity': DEFAULT_BUILDING_OPACITY,
       },
     },
   },
@@ -53,6 +64,8 @@ export function createBuildingLayerController(map, appState) {
     ensureBuildingSource();
 
     if (map.getLayer(BUILDING_LAYER_ID)) {
+      ensureBuildingLayerOrder();
+      syncBuildingPaint();
       return;
     }
 
@@ -63,6 +76,18 @@ export function createBuildingLayerController(map, appState) {
       },
       findBuildingInsertionLayerId(map)
     );
+
+    ensureBuildingLayerOrder();
+    syncBuildingPaint();
+  };
+
+  const syncBuildingPaint = () => {
+    if (!map.getLayer(BUILDING_LAYER_ID)) {
+      return;
+    }
+
+    map.setPaintProperty(BUILDING_LAYER_ID, 'fill-extrusion-color', getBuildingColorForBasemap(latestState.basemap));
+    map.setPaintProperty(BUILDING_LAYER_ID, 'fill-extrusion-opacity', getBuildingOpacityForState(latestState));
   };
 
   const ensureBuildingSource = () => {
@@ -74,6 +99,17 @@ export function createBuildingLayerController(map, appState) {
       type: 'vector',
       url: BUILDING_VECTOR_SOURCE_URL,
     });
+  };
+
+  const ensureBuildingLayerOrder = () => {
+    if (!map.getLayer(BUILDING_LAYER_ID)) {
+      return;
+    }
+
+    const insertionLayerId = findBuildingInsertionLayerId(map);
+    if (insertionLayerId && insertionLayerId !== BUILDING_LAYER_ID) {
+      map.moveLayer(BUILDING_LAYER_ID, insertionLayerId);
+    }
   };
 
   const clearBuildingLayer = () => {
@@ -97,6 +133,18 @@ export function createBuildingLayerController(map, appState) {
       syncBuildingLayer();
     },
   };
+}
+
+function getBuildingOpacityForState(state) {
+  if (state.terrainEnabled) {
+    return BUILDING_TERRAIN_OPACITY_BY_BASEMAP[state.basemap] ?? BUILDING_OPACITY_BY_BASEMAP[state.basemap] ?? DEFAULT_BUILDING_OPACITY;
+  }
+
+  return BUILDING_OPACITY_BY_BASEMAP[state.basemap] ?? DEFAULT_BUILDING_OPACITY;
+}
+
+function getBuildingColorForBasemap(basemap) {
+  return BUILDING_COLOR_BY_BASEMAP[basemap] ?? DEFAULT_BUILDING_COLOR;
 }
 
 function findBuildingInsertionLayerId(map) {
