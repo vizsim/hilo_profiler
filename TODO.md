@@ -32,11 +32,11 @@ Skala
   - (b) Wenn `fetch` einmal scheiterte, wurde die *rejected* Promise gecached → Backend konnte nicht mehr „heilen", Sampling blieb für die Session tot.
 - **Fix**: Gemeinsamer `createLruPromiseCache(limit)`-Helper in `js/utils/`. Beide Sampler nutzen ihn mit Limit 64. Touch-on-Access (`delete` + `set`) bumpt MRU-Einträge ans Ende der Map-Iteration; bei `size > limit` wird das älteste Insertion-Order-Element entfernt. Auf rejection wird der Eintrag automatisch evicted (mit Race-Guard, dass nur derselbe Promise gelöscht wird). Zusätzlich auch das `tileTemplatePromise` im Building-Sampler resettet sich bei Fehler — vorher konnte ein einmaliger TileJSON-Fail die ganze Session lahmlegen.
 
-### 4. [high | M] State-Klonen pro Subscriber pro Notify
+### 4. [high | M] State-Klonen pro Subscriber pro Notify ✅
 
-- [ ] **Wo**: [js/state/appState.js:33-62](js/state/appState.js#L33-L62), [127-141](js/state/appState.js#L127-L141)
-- **Problem**: `notify()` ruft `cloneState()` einmal **pro Subscriber** auf — bei profileData mit 320 Samples + Elevations + buildingOffsets sind das hunderte Sub-Allokationen pro Notify. Hover-Bewegung auf der Karte triggert das voll, mit ~4 Subscribern.
-- **Fix**: Snapshot einmal pro Notify klonen und an alle Listener weiterreichen, oder in den Listener-Pfaden Immutability per Konvention annehmen und Klonen nur bei `getState()` machen.
+- [x] **Wo**: [js/state/appState.js](js/state/appState.js)
+- **Problem**: Bei jedem `update()` wurde `cloneState(state)` zweimal aufgerufen (einmal für den Updater, einmal in `notify`). Bei profileData mit 320 Samples + Elevations + buildingOffsets sind das hunderte Sub-Allokationen pro State-Update. Bei einer Hover-Bewegung auf der Karte feuerte das mehrfach pro Sekunde. Zusätzlich brach das `state.profileData !== previousState.profileData`-Pattern in initMap, weil das Klonen eine neue Referenz auch für unveränderten Inhalt erzeugt hat.
+- **Fix**: Deep-Clone komplett rausgeworfen. Listener bekommen die Live-Referenz und behandeln sie per Konvention als read-only (Comment im File). Setter folgen ohnehin alle dem immutable-Spread-Pattern (`{ ...currentState, ... }`), also werden vorherige Snapshots nicht mutiert. **Bonus**: `state.profileData !== previousState.profileData`-Reference-Equality funktioniert jetzt korrekt — wenn ProfileData unverändert bleibt (z.B. bei Hover-Update), ist die Referenz stabil. Initialer State wird einmalig defensiv geklont, damit das `initialState`-Modul-Konstante nie aliased wird.
 
 ### 5. [high | M] Heightgraph macht Full-Repaint bei jedem Hover-Tick ✅
 

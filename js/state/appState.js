@@ -30,34 +30,18 @@ const initialState = {
 
 const UNCHANGED = Symbol('unchanged');
 
-function cloneState(state) {
+// One-shot deep clone of `initialState` so the constant is never aliased into
+// the live state tree (in case anyone ever pushes into a nested array). All
+// runtime updates use the immutable spread pattern below — listeners are
+// expected to treat the state they receive as read-only.
+function buildInitialState() {
   return {
-    ...state,
-    localImagery: state.localImagery
-      ? {
-          ...state.localImagery,
-          choices: (state.localImagery.choices || []).map((choice) => ({ ...choice })),
-        }
-      : null,
-    startPoint: state.startPoint ? { ...state.startPoint } : null,
-    endPoint: state.endPoint ? { ...state.endPoint } : null,
-    waypoints: state.waypoints.map((waypoint) => ({ ...waypoint })),
-    directLine: state.directLine
-      ? {
-          ...state.directLine,
-          coordinates: state.directLine.coordinates.map((coordinate) => [...coordinate]),
-        }
-      : null,
-    profileData: state.profileData
-      ? {
-          ...state.profileData,
-          samples: state.profileData.samples.map((sample) => ({ ...sample })),
-          elevations: [...state.profileData.elevations],
-          terrainElevations: [...(state.profileData.terrainElevations || [])],
-          buildingOffsets: [...(state.profileData.buildingOffsets || [])],
-          stats: { ...state.profileData.stats },
-        }
-      : null,
+    ...initialState,
+    localImagery: {
+      ...initialState.localImagery,
+      choices: initialState.localImagery.choices.map((choice) => ({ ...choice })),
+    },
+    waypoints: initialState.waypoints.map((waypoint) => ({ ...waypoint })),
   };
 }
 
@@ -121,16 +105,21 @@ function areLocalImageryStatesEqual(left, right) {
 }
 
 export function createAppState() {
-  let state = cloneState(initialState);
+  // The state tree is immutable-by-convention: every setter below builds a
+  // new state object via spread (`{ ...currentState, ... }`) and never
+  // mutates the previous one. Listeners receive the live reference and must
+  // treat it as read-only — this lets consumers do cheap reference-equality
+  // checks on nested fields like `state.profileData` to detect actual
+  // changes (vs. unrelated notifications such as hover updates).
+  let state = buildInitialState();
   const listeners = new Set();
 
   const notify = () => {
-    const nextState = cloneState(state);
-    listeners.forEach((listener) => listener(nextState));
+    listeners.forEach((listener) => listener(state));
   };
 
   const update = (updater) => {
-    const nextState = updater(cloneState(state));
+    const nextState = updater(state);
     if (nextState === UNCHANGED) {
       return;
     }
@@ -142,11 +131,11 @@ export function createAppState() {
 
   return {
     getState() {
-      return cloneState(state);
+      return state;
     },
     subscribe(listener) {
       listeners.add(listener);
-      listener(cloneState(state));
+      listener(state);
       return () => listeners.delete(listener);
     },
     setBasemap(basemap) {
