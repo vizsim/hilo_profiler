@@ -8,6 +8,12 @@
 // matter the camera pitch or terrain elevation, while still allowing
 // per-segment coloring (e.g. green vs orange where the line crosses
 // buildings).
+//
+// Per-frame allocations are avoided: scratch buffers (anchor screen coords,
+// interpolated vertices, miters, mesh) live in the layer closure and grow
+// only when the input gets bigger. Segment colors are accepted pre-parsed as
+// `[r, g, b]` floats so the render loop can write them straight into the
+// vertex buffer without string parsing.
 
 const VERTEX_SHADER_SOURCE = `
   attribute vec2 a_position;
@@ -38,6 +44,7 @@ const VERTICES_PER_SEGMENT = 6;
 const MITER_DOT_FLOOR = 0.2;
 const MIN_VERTEX_COUNT_FOR_DRAW = 3;
 const EARTH_RADIUS_METERS = 6378137;
+const EPSILON = 1e-4;
 
 export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opacity = 1 }) {
   const defaultColorRgb = parseHexColor(defaultColor);
@@ -50,6 +57,16 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
   let colorLocation = -1;
   let viewportLocation = null;
   let opacityLocation = null;
+
+  // Persistent scratch buffers — grown on demand, never shrunk. Reused every
+  // frame to avoid GC churn during pan/zoom/pitch animations.
+  let positions = new Float32Array(0);
+  let anchorScreenX = new Float32Array(0);
+  let anchorScreenY = new Float32Array(0);
+  let screenX = new Float32Array(0);
+  let screenY = new Float32Array(0);
+  let miterX = new Float32Array(0);
+  let miterY = new Float32Array(0);
 
   return {
     id,
@@ -129,9 +146,125 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
       }
 
       const halfWidth = Math.max(0.5, widthPixels / 2);
-      const vertices = buildLineMesh(lineData, mapRef, halfWidth, defaultColorRgb);
-      const vertexCount = vertices.length / FLOATS_PER_VERTEX;
-      if (vertexCount < MIN_VERTEX_COUNT_FOR_DRAW) {
+      const anchors = lineData.anchors;
+      const anchorCumT = lineData.anchorCumT;
+      const vertexT = lineData.vertexT;
+      const segmentColors = lineData.segmentColors;
+      const anchorCount = anchors.length;
+      const vertexCount = vertexT.length;
+      const segmentCount = vertexCount - 1;
+      if (segmentCount < 1) {
+        return;
+      }
+
+      // Grow scratch buffers if the input got bigger than what we've seen so
+      // far. ensureCapacity returns a (possibly reallocated) Float32Array.
+      anchorScreenX = ensureCapacity(anchorScreenX, anchorCount);
+      anchorScreenY = ensureCapacity(anchorScreenY, anchorCount);
+      screenX = ensureCapacity(screenX, vertexCount);
+      screenY = ensureCapacity(screenY, vertexCount);
+      miterX = ensureCapacity(miterX, vertexCount);
+      miterY = ensureCapacity(miterY, vertexCount);
+      const meshFloats = segmentCount * VERTICES_PER_SEGMENT * FLOATS_PER_VERTEX;
+      positions = ensureCapacity(positions, meshFloats);
+
+      // Project anchors once per frame.
+      for (let index = 0; index < anchorCount; index += 1) {
+        const coord = anchors[index];
+        const projected = mapRef.project({ lng: coord[0], lat: coord[1] });
+        anchorScreenX[index] = Number.isFinite(projected.x) ? projected.x : 0;
+        anchorScreenY[index] = Number.isFinite(projected.y) ? projected.y : 0;
+      }
+
+      // Linearly interpolate every polyline vertex along the anchor sequence
+      // in screen space. vertexT is monotonically non-decreasing, so we walk
+      // anchorCumT once.
+      let segIndex = 0;
+      const segLast = anchorCumT.length - 2;
+      for (let index = 0; index < vertexCount; index += 1) {
+        let t = vertexT[index];
+        if (t < 0) {
+          t = 0;
+        } else if (t > 1) {
+          t = 1;
+        }
+        while (segIndex < segLast && anchorCumT[segIndex + 1] < t) {
+          segIndex += 1;
+        }
+        const segStart = anchorCumT[segIndex];
+        const segEnd = anchorCumT[segIndex + 1];
+        const span = segEnd - segStart;
+        const localT = span > 1e-9 ? (t - segStart) / span : 0;
+        const ax = anchorScreenX[segIndex];
+        const ay = anchorScreenY[segIndex];
+        const bx = anchorScreenX[segIndex + 1];
+        const by = anchorScreenY[segIndex + 1];
+        screenX[index] = ax + localT * (bx - ax);
+        screenY[index] = ay + localT * (by - ay);
+      }
+
+      computeMitersInPlace(screenX, screenY, vertexCount, halfWidth, miterX, miterY);
+
+      // Build the triangle mesh straight into the persistent positions buffer.
+      let writeOffset = 0;
+      for (let index = 0; index < segmentCount; index += 1) {
+        const p0x = screenX[index];
+        const p0y = screenY[index];
+        const p1x = screenX[index + 1];
+        const p1y = screenY[index + 1];
+        const m0x = miterX[index];
+        const m0y = miterY[index];
+        const m1x = miterX[index + 1];
+        const m1y = miterY[index + 1];
+
+        const segColor = (segmentColors && segmentColors[index]) || defaultColorRgb;
+        const r = segColor[0];
+        const g = segColor[1];
+        const b = segColor[2];
+
+        // Triangle 1: p0L, p0R, p1L
+        positions[writeOffset] = p0x + m0x;
+        positions[writeOffset + 1] = p0y + m0y;
+        positions[writeOffset + 2] = r;
+        positions[writeOffset + 3] = g;
+        positions[writeOffset + 4] = b;
+
+        positions[writeOffset + 5] = p0x - m0x;
+        positions[writeOffset + 6] = p0y - m0y;
+        positions[writeOffset + 7] = r;
+        positions[writeOffset + 8] = g;
+        positions[writeOffset + 9] = b;
+
+        positions[writeOffset + 10] = p1x + m1x;
+        positions[writeOffset + 11] = p1y + m1y;
+        positions[writeOffset + 12] = r;
+        positions[writeOffset + 13] = g;
+        positions[writeOffset + 14] = b;
+
+        // Triangle 2: p1L, p0R, p1R
+        positions[writeOffset + 15] = p1x + m1x;
+        positions[writeOffset + 16] = p1y + m1y;
+        positions[writeOffset + 17] = r;
+        positions[writeOffset + 18] = g;
+        positions[writeOffset + 19] = b;
+
+        positions[writeOffset + 20] = p0x - m0x;
+        positions[writeOffset + 21] = p0y - m0y;
+        positions[writeOffset + 22] = r;
+        positions[writeOffset + 23] = g;
+        positions[writeOffset + 24] = b;
+
+        positions[writeOffset + 25] = p1x - m1x;
+        positions[writeOffset + 26] = p1y - m1y;
+        positions[writeOffset + 27] = r;
+        positions[writeOffset + 28] = g;
+        positions[writeOffset + 29] = b;
+
+        writeOffset += VERTICES_PER_SEGMENT * FLOATS_PER_VERTEX;
+      }
+
+      const drawVertexCount = writeOffset / FLOATS_PER_VERTEX;
+      if (drawVertexCount < MIN_VERTEX_COUNT_FOR_DRAW) {
         return;
       }
 
@@ -142,7 +275,9 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
       gl.useProgram(program);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+      // subarray creates a tiny view object (no data copy) so the driver only
+      // uploads the bytes we actually wrote.
+      gl.bufferData(gl.ARRAY_BUFFER, positions.subarray(0, writeOffset), gl.DYNAMIC_DRAW);
 
       const stride = FLOATS_PER_VERTEX * 4;
       gl.enableVertexAttribArray(positionLocation);
@@ -163,7 +298,7 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-      gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+      gl.drawArrays(gl.TRIANGLES, 0, drawVertexCount);
 
       gl.disableVertexAttribArray(positionLocation);
       gl.disableVertexAttribArray(colorLocation);
@@ -182,6 +317,17 @@ function compileShader(gl, type, source) {
     throw new Error(`Custom line layer shader compile failed: ${info}`);
   }
   return shader;
+}
+
+function ensureCapacity(buffer, needed) {
+  if (buffer.length >= needed) {
+    return buffer;
+  }
+  let capacity = buffer.length || 64;
+  while (capacity < needed) {
+    capacity *= 2;
+  }
+  return new Float32Array(capacity);
 }
 
 function parseHexColor(hex) {
@@ -221,137 +367,60 @@ function computeAnchorCumulativeT(anchors) {
   return cumulative.map((value) => value / total);
 }
 
-function buildLineMesh(data, map, halfWidth, defaultColorRgb) {
-  const { anchors, anchorCumT, vertexT, segmentColors } = data;
-
-  const anchorScreens = anchors.map((coord) => {
-    const projected = map.project({ lng: coord[0], lat: coord[1] });
-    return {
-      x: Number.isFinite(projected.x) ? projected.x : 0,
-      y: Number.isFinite(projected.y) ? projected.y : 0,
-    };
-  });
-
-  const screenPoints = vertexT.map((t) => interpolateAnchorScreenPoint(anchorScreens, anchorCumT, t));
-  if (screenPoints.length < 2) {
-    return new Float32Array(0);
-  }
-
-  const miters = computeMiterOffsets(screenPoints, halfWidth);
-  const totalSegments = screenPoints.length - 1;
-  const positions = new Float32Array(totalSegments * VERTICES_PER_SEGMENT * FLOATS_PER_VERTEX);
-
-  let writeOffset = 0;
-  for (let index = 0; index < totalSegments; index += 1) {
-    const p0 = screenPoints[index];
-    const p1 = screenPoints[index + 1];
-    const m0 = miters[index];
-    const m1 = miters[index + 1];
-
-    const segmentColor = (segmentColors && segmentColors[index])
-      ? parseHexColor(segmentColors[index])
-      : defaultColorRgb;
-    const r = segmentColor[0];
-    const g = segmentColor[1];
-    const b = segmentColor[2];
-
-    writeOffset = writeVertex(positions, writeOffset, p0.x + m0.x, p0.y + m0.y, r, g, b);
-    writeOffset = writeVertex(positions, writeOffset, p0.x - m0.x, p0.y - m0.y, r, g, b);
-    writeOffset = writeVertex(positions, writeOffset, p1.x + m1.x, p1.y + m1.y, r, g, b);
-    writeOffset = writeVertex(positions, writeOffset, p1.x + m1.x, p1.y + m1.y, r, g, b);
-    writeOffset = writeVertex(positions, writeOffset, p0.x - m0.x, p0.y - m0.y, r, g, b);
-    writeOffset = writeVertex(positions, writeOffset, p1.x - m1.x, p1.y - m1.y, r, g, b);
-  }
-
-  return positions;
-}
-
-function interpolateAnchorScreenPoint(anchorScreens, anchorCumT, t) {
-  const clampedT = Math.max(0, Math.min(1, t));
-
-  if (anchorScreens.length === 0) {
-    return { x: 0, y: 0 };
-  }
-  if (anchorScreens.length === 1) {
-    return { ...anchorScreens[0] };
-  }
-
-  let segIndex = 0;
-  while (segIndex < anchorCumT.length - 2 && anchorCumT[segIndex + 1] < clampedT) {
-    segIndex += 1;
-  }
-
-  const segStart = anchorCumT[segIndex];
-  const segEnd = anchorCumT[segIndex + 1];
-  const span = Math.max(1e-9, segEnd - segStart);
-  const localT = (clampedT - segStart) / span;
-
-  const A = anchorScreens[segIndex];
-  const B = anchorScreens[segIndex + 1];
-  return {
-    x: A.x + localT * (B.x - A.x),
-    y: A.y + localT * (B.y - A.y),
-  };
-}
-
-function writeVertex(buffer, offset, x, y, r, g, b) {
-  buffer[offset] = x;
-  buffer[offset + 1] = y;
-  buffer[offset + 2] = r;
-  buffer[offset + 3] = g;
-  buffer[offset + 4] = b;
-  return offset + FLOATS_PER_VERTEX;
-}
-
-function computeMiterOffsets(points, halfWidth) {
-  const miters = new Array(points.length);
-  for (let index = 0; index < points.length; index += 1) {
-    const prev = index > 0 ? points[index - 1] : null;
-    const next = index < points.length - 1 ? points[index + 1] : null;
-    miters[index] = computeMiter(prev, points[index], next, halfWidth);
-  }
-  return miters;
-}
-
-function computeMiter(prev, current, next, halfWidth) {
-  const incoming = prev ? perpendicularUnitVector(prev, current) : null;
-  const outgoing = next ? perpendicularUnitVector(current, next) : null;
-
-  if (incoming && outgoing) {
-    let mx = incoming.x + outgoing.x;
-    let my = incoming.y + outgoing.y;
-    const length = Math.hypot(mx, my);
-
-    if (length < 1e-4) {
-      return { x: incoming.x * halfWidth, y: incoming.y * halfWidth };
+function computeMitersInPlace(screenX, screenY, count, halfWidth, miterX, miterY) {
+  for (let index = 0; index < count; index += 1) {
+    let n1x = 0;
+    let n1y = 0;
+    let has1 = false;
+    if (index > 0) {
+      const dx = screenX[index] - screenX[index - 1];
+      const dy = screenY[index] - screenY[index - 1];
+      const length = Math.hypot(dx, dy);
+      if (length >= EPSILON) {
+        n1x = -dy / length;
+        n1y = dx / length;
+        has1 = true;
+      }
     }
 
-    mx /= length;
-    my /= length;
+    let n2x = 0;
+    let n2y = 0;
+    let has2 = false;
+    if (index < count - 1) {
+      const dx = screenX[index + 1] - screenX[index];
+      const dy = screenY[index + 1] - screenY[index];
+      const length = Math.hypot(dx, dy);
+      if (length >= EPSILON) {
+        n2x = -dy / length;
+        n2y = dx / length;
+        has2 = true;
+      }
+    }
 
-    const dot = mx * incoming.x + my * incoming.y;
-    const scale = halfWidth / Math.max(MITER_DOT_FLOOR, dot);
-
-    return { x: mx * scale, y: my * scale };
+    if (has1 && has2) {
+      let mx = n1x + n2x;
+      let my = n1y + n2y;
+      const mlen = Math.hypot(mx, my);
+      if (mlen < EPSILON) {
+        miterX[index] = n1x * halfWidth;
+        miterY[index] = n1y * halfWidth;
+        continue;
+      }
+      mx /= mlen;
+      my /= mlen;
+      const dot = mx * n1x + my * n1y;
+      const scale = halfWidth / Math.max(MITER_DOT_FLOOR, dot);
+      miterX[index] = mx * scale;
+      miterY[index] = my * scale;
+    } else if (has1) {
+      miterX[index] = n1x * halfWidth;
+      miterY[index] = n1y * halfWidth;
+    } else if (has2) {
+      miterX[index] = n2x * halfWidth;
+      miterY[index] = n2y * halfWidth;
+    } else {
+      miterX[index] = 0;
+      miterY[index] = 0;
+    }
   }
-
-  if (incoming) {
-    return { x: incoming.x * halfWidth, y: incoming.y * halfWidth };
-  }
-
-  if (outgoing) {
-    return { x: outgoing.x * halfWidth, y: outgoing.y * halfWidth };
-  }
-
-  return { x: 0, y: 0 };
-}
-
-function perpendicularUnitVector(from, to) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.hypot(dx, dy);
-  if (length < 1e-4) {
-    return null;
-  }
-  return { x: -dy / length, y: dx / length };
 }

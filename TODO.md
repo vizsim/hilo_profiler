@@ -17,10 +17,11 @@ Skala
 - **Problem**: `for (const sample of samples) { await sampleElevationAtPoint(...) }` serialisiert alle ~320 Sample-Lookups. Tile-Cache dedupliziert parallele Promises bereits korrekt.
 - **Fix**: `Promise.all(samples.map(s => sampleElevationAtPoint(s.lng, s.lat)))` — analog zum Building-Sampler. Spürbar schnellerer First-Paint des Profils.
 
-### 2. [high | S] Hex-Color-Reparsing + Allokationen pro Frame im Custom-Line-Layer
-- [ ] **Wo**: [js/map/customLineLayer.js:224-307](js/map/customLineLayer.js#L224-L307)
-- **Problem**: `parseHexColor()` läuft pro Segment pro Frame (~12.000 String-Parses/s bei 200 Samples × 60 fps). Dazu allokiert jeder Frame ein neues `Float32Array(...)`, neue `anchorScreens`/`vertexT`-Arrays via `.map`.
-- **Fix**: Im Caller (initMap.js) bereits `[r,g,b]`-Tupel statt Hex-Strings übergeben. Persistente Vertex-Buffer im Closure halten und mit Wachstums-Strategie wiederverwenden.
+### 2. [high | S] Hex-Color-Reparsing + Allokationen pro Frame im Custom-Line-Layer ✅
+
+- [x] **Wo**: [js/map/customLineLayer.js](js/map/customLineLayer.js), [js/map/initMap.js](js/map/initMap.js)
+- **Problem**: `parseHexColor()` lief pro Segment pro Frame (~12.000 String-Parses/s bei 200 Samples × 60 fps). Dazu allokierte jeder Frame ein neues `Float32Array(...)`, neue `anchorScreens`/`vertexT`-Arrays via `.map`.
+- **Fix**: initMap.js liefert pro Segment jetzt eine Referenz auf eines von zwei vorgeparsten `Object.freeze([r,g,b])`-Tupeln. Custom-Layer schreibt RGB-Werte direkt in den Vertex-Buffer (kein Parse mehr). Persistente Scratch-Buffer (positions/anchorScreen/screenPoints/miters als Float32Array) leben im Closure, wachsen mit Verdopplung und werden über `subarray()` an `bufferData` weitergegeben — keine Per-Frame-Mesh-Allokation mehr.
 
 ### 3. [high | M] Tile-Caches ohne LRU + ohne Eviction bei Fehlern
 - [ ] **Wo**: [js/elevation/buildingProfileSampler.js:46-51](js/elevation/buildingProfileSampler.js#L46-L51), [js/elevation/mapterhornClient.js:39-43](js/elevation/mapterhornClient.js#L39-L43)

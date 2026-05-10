@@ -93,8 +93,10 @@ function getDirectLineKey(directLine) {
   return directLine.coordinates.map((coordinate) => coordinate.join(',')).join('|');
 }
 
-const ROUTE_COLOR_DEFAULT = '#145e4b';
-const ROUTE_COLOR_BUILDING = '#d97706';
+// Pre-parsed RGB tuples — passed by reference into segmentColors so the
+// custom line layer never has to reparse hex strings in its render loop.
+const ROUTE_COLOR_DEFAULT_RGB = Object.freeze([0x14 / 255, 0x5e / 255, 0x4b / 255]);
+const ROUTE_COLOR_BUILDING_RGB = Object.freeze([0xd9 / 255, 0x77 / 255, 0x06 / 255]);
 
 function buildRouteOverlayData(state) {
   const directLineCoords = state.directLine?.coordinates;
@@ -125,7 +127,7 @@ function buildRouteOverlayData(state) {
   const segmentColors = new Array(samples.length - 1);
   for (let index = 0; index < samples.length - 1; index += 1) {
     const overBuilding = (offsets[index] > 0) || (offsets[index + 1] > 0);
-    segmentColors[index] = overBuilding ? ROUTE_COLOR_BUILDING : ROUTE_COLOR_DEFAULT;
+    segmentColors[index] = overBuilding ? ROUTE_COLOR_BUILDING_RGB : ROUTE_COLOR_DEFAULT_RGB;
   }
 
   return {
