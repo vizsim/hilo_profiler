@@ -50,12 +50,12 @@ const DEFAULT_SKY_STYLE = {
 
 const SKY_STYLES = {
   dark: {
-    'sky-color': '#1e2b58',
+    'sky-color': '#17152c',
     'sky-horizon-blend': 0.8,
-    'horizon-color': '#614cbf',
+    'horizon-color': '#100d36',
     'horizon-fog-blend': 0.8,
-    'fog-color': '#D4D6D8',
-    'fog-ground-blend': 0.5,
+    'fog-color': '#282454',
+    'fog-ground-blend': 0.85,
   },
 };
 
@@ -89,7 +89,7 @@ export function initMap(appState) {
     zoom: 5.7,
     minZoom: 3,
     maxZoom: 18,
-    maxPitch: 85,
+    maxPitch: 80,
   });
   const eliBasemapController = createEliBasemapController(map, appState);
 
@@ -333,8 +333,8 @@ function applyTerrainState(map, state, options = {}) {
   if (map.getSource('terrain-dem')) {
     map.setTerrain(state.terrainEnabled ? { source: 'terrain-dem', exaggeration: 1 } : null);
 
-    if (state.terrainEnabled && map.getPitch() < 70) {
-      map.easeTo({ pitch: 82, duration: 700 });
+    if (state.terrainEnabled && map.getPitch() < 50) {
+      map.easeTo({ pitch: 60, duration: 700 });
     } else if (!state.terrainEnabled && map.getPitch() > 60) {
       map.easeTo({ pitch: 0, duration: 500 });
     }
