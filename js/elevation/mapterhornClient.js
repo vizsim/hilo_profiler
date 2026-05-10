@@ -1,10 +1,12 @@
 import { decodeTerrariumElevation, lonLatToTileSample } from './terrarium.js';
+import { createLruPromiseCache } from '../utils/lruPromiseCache.js';
 
 const TILE_ZOOM = 12;
 const TILE_ENDPOINT = 'https://tiles.mapterhorn.com';
+const TILE_CACHE_LIMIT = 64;
 
 export function createMapterhornClient() {
-  const tileCache = new Map();
+  const tileCache = createLruPromiseCache(TILE_CACHE_LIMIT);
 
   return {
     async sampleProfile(samples) {
@@ -32,12 +34,7 @@ export function createMapterhornClient() {
   async function getTileForCoordinate(lng, lat) {
     const { tileX, tileY } = lonLatToTileSample(lng, lat, TILE_ZOOM, 512);
     const cacheKey = `${TILE_ZOOM}/${tileX}/${tileY}`;
-
-    if (!tileCache.has(cacheKey)) {
-      tileCache.set(cacheKey, loadTile(TILE_ZOOM, tileX, tileY));
-    }
-
-    return tileCache.get(cacheKey);
+    return tileCache.getOrCompute(cacheKey, () => loadTile(TILE_ZOOM, tileX, tileY));
   }
 
   async function loadTile(zoom, tileX, tileY) {

@@ -63,6 +63,13 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
   let screenY = new Float32Array(0);
   let miterX = new Float32Array(0);
   let miterY = new Float32Array(0);
+  // 1 if the vertex projected to a valid in-front-of-camera screen position.
+  // Segments touching an invalid endpoint are skipped during meshing —
+  // otherwise a sample whose Mercator point lies behind the pitched camera
+  // plane would project to a garbage screen coordinate after the perspective
+  // divide (negative or near-zero w), creating phantom triangles spanning
+  // the entire viewport.
+  let valid = new Uint8Array(0);
 
   return {
     id,
@@ -150,32 +157,74 @@ export function createCustomLineLayer({ id, defaultColor, widthPixels = 4, opaci
       screenY = ensureCapacity(screenY, vertexCount);
       miterX = ensureCapacity(miterX, vertexCount);
       miterY = ensureCapacity(miterY, vertexCount);
+      valid = ensureUint8Capacity(valid, vertexCount);
       const meshFloats = segmentCount * VERTICES_PER_SEGMENT * FLOATS_PER_VERTEX;
       positions = ensureCapacity(positions, meshFloats);
 
-      // Project each sample with terrain-agnostic projection so the rendered
-      // line lives on the Mercator ground plane (no terrain elevation), while
-      // still picking up camera pitch/zoom/bearing through the pixelMatrix.
-      // Falls back to map.project if transform.locationPoint is unavailable.
+      // Project each sample. We do the matrix multiply manually so we can
+      // observe the clip-space w; samples with w <= 0 lie behind the
+      // pitched camera plane and would otherwise yield garbage screen coords
+      // after the perspective divide. Such samples are flagged invalid so
+      // adjacent segments get skipped during meshing.
       const transform = mapRef.transform;
-      const useTransformLocationPoint = transform && typeof transform.locationPoint === 'function';
+      const pixelMatrix = transform && transform.pixelMatrix;
+      const hasManualProjection = pixelMatrix
+        && transform.worldSize > 0
+        && typeof transform.locationCoordinate === 'function';
+      const useTransformLocationPoint = !hasManualProjection
+        && transform
+        && typeof transform.locationPoint === 'function';
       const lngLatScratch = { lng: 0, lat: 0 };
       for (let index = 0; index < vertexCount; index += 1) {
         const coord = vertices[index];
         lngLatScratch.lng = coord[0];
         lngLatScratch.lat = coord[1];
-        const projected = useTransformLocationPoint
-          ? transform.locationPoint(lngLatScratch)
-          : mapRef.project(lngLatScratch);
-        screenX[index] = Number.isFinite(projected.x) ? projected.x : 0;
-        screenY[index] = Number.isFinite(projected.y) ? projected.y : 0;
+
+        if (hasManualProjection) {
+          const merc = transform.locationCoordinate(lngLatScratch);
+          const ws = transform.worldSize;
+          const wx = merc.x * ws;
+          const wy = merc.y * ws;
+          const m = pixelMatrix;
+          const w = m[3] * wx + m[7] * wy + m[15];
+          if (w > 1e-6) {
+            const sx = (m[0] * wx + m[4] * wy + m[12]) / w;
+            const sy = (m[1] * wx + m[5] * wy + m[13]) / w;
+            if (Number.isFinite(sx) && Number.isFinite(sy)) {
+              screenX[index] = sx;
+              screenY[index] = sy;
+              valid[index] = 1;
+              continue;
+            }
+          }
+          screenX[index] = 0;
+          screenY[index] = 0;
+          valid[index] = 0;
+        } else {
+          const projected = useTransformLocationPoint
+            ? transform.locationPoint(lngLatScratch)
+            : mapRef.project(lngLatScratch);
+          const px = projected.x;
+          const py = projected.y;
+          const finite = Number.isFinite(px) && Number.isFinite(py);
+          // Generous sanity bound — anything past this is almost certainly a
+          // perspective-divide blow-up rather than a legitimate off-screen
+          // coord we still want to draw to the viewport edge.
+          const sane = finite && Math.abs(px) < 100000 && Math.abs(py) < 100000;
+          screenX[index] = sane ? px : 0;
+          screenY[index] = sane ? py : 0;
+          valid[index] = sane ? 1 : 0;
+        }
       }
 
-      computeMitersInPlace(screenX, screenY, vertexCount, halfWidth, miterX, miterY);
+      computeMitersInPlace(screenX, screenY, valid, vertexCount, halfWidth, miterX, miterY);
 
       // Build the triangle mesh straight into the persistent positions buffer.
       let writeOffset = 0;
       for (let index = 0; index < segmentCount; index += 1) {
+        if (!valid[index] || !valid[index + 1]) {
+          continue;
+        }
         const p0x = screenX[index];
         const p0y = screenY[index];
         const p1x = screenX[index + 1];
@@ -298,6 +347,17 @@ function ensureCapacity(buffer, needed) {
   return new Float32Array(capacity);
 }
 
+function ensureUint8Capacity(buffer, needed) {
+  if (buffer.length >= needed) {
+    return buffer;
+  }
+  let capacity = buffer.length || 64;
+  while (capacity < needed) {
+    capacity *= 2;
+  }
+  return new Uint8Array(capacity);
+}
+
 function parseHexColor(hex) {
   if (typeof hex !== 'string' || !hex.startsWith('#') || hex.length !== 7) {
     return [1, 1, 1];
@@ -310,12 +370,21 @@ function parseHexColor(hex) {
   ];
 }
 
-function computeMitersInPlace(screenX, screenY, count, halfWidth, miterX, miterY) {
+function computeMitersInPlace(screenX, screenY, valid, count, halfWidth, miterX, miterY) {
   for (let index = 0; index < count; index += 1) {
+    if (!valid[index]) {
+      miterX[index] = 0;
+      miterY[index] = 0;
+      continue;
+    }
+
     let n1x = 0;
     let n1y = 0;
     let has1 = false;
-    if (index > 0) {
+    // Only use the incoming edge if both endpoints are valid — otherwise the
+    // segment won't be drawn and shouldn't influence the miter at this
+    // vertex.
+    if (index > 0 && valid[index - 1]) {
       const dx = screenX[index] - screenX[index - 1];
       const dy = screenY[index] - screenY[index - 1];
       const length = Math.hypot(dx, dy);
@@ -329,7 +398,7 @@ function computeMitersInPlace(screenX, screenY, count, halfWidth, miterX, miterY
     let n2x = 0;
     let n2y = 0;
     let has2 = false;
-    if (index < count - 1) {
+    if (index < count - 1 && valid[index + 1]) {
       const dx = screenX[index + 1] - screenX[index];
       const dy = screenY[index + 1] - screenY[index];
       const length = Math.hypot(dx, dy);

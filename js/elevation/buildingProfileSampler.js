@@ -1,15 +1,17 @@
 import Protobuf from 'https://esm.sh/pbf@4.0.1';
 import { VectorTile } from 'https://esm.sh/@mapbox/vector-tile@2.0.3';
 import { lonLatToTileSample } from './terrarium.js';
+import { createLruPromiseCache } from '../utils/lruPromiseCache.js';
 
 const BUILDING_TILEJSON_URL = 'https://tiles.openfreemap.org/planet';
 const BUILDING_TILE_SIZE = 512;
 const BUILDING_TILE_ZOOM = 14;
 const BUILDING_SOURCE_LAYER = 'building';
 const DEFAULT_BUILDING_HEIGHT = 12;
+const TILE_CACHE_LIMIT = 64;
 
 export function createBuildingProfileSampler() {
-  const tileCache = new Map();
+  const tileCache = createLruPromiseCache(TILE_CACHE_LIMIT);
   let tileTemplatePromise = null;
 
   return {
@@ -50,11 +52,7 @@ export function createBuildingProfileSampler() {
 
   async function getBuildingsForTile(tileX, tileY) {
     const cacheKey = `${BUILDING_TILE_ZOOM}/${tileX}/${tileY}`;
-    if (!tileCache.has(cacheKey)) {
-      tileCache.set(cacheKey, loadTileBuildings(BUILDING_TILE_ZOOM, tileX, tileY));
-    }
-
-    return tileCache.get(cacheKey);
+    return tileCache.getOrCompute(cacheKey, () => loadTileBuildings(BUILDING_TILE_ZOOM, tileX, tileY));
   }
 
   async function loadTileBuildings(zoom, tileX, tileY) {
@@ -97,7 +95,7 @@ export function createBuildingProfileSampler() {
 
   async function getTileUrlTemplate() {
     if (!tileTemplatePromise) {
-      tileTemplatePromise = fetch(BUILDING_TILEJSON_URL)
+      const pending = fetch(BUILDING_TILEJSON_URL)
         .then((response) => {
           if (!response.ok) {
             throw new Error('OpenFreeMap TileJSON konnte nicht geladen werden.');
@@ -113,6 +111,16 @@ export function createBuildingProfileSampler() {
 
           return tileTemplate;
         });
+
+      // Reset on failure so transient errors don't permanently break
+      // sampling.
+      pending.catch(() => {
+        if (tileTemplatePromise === pending) {
+          tileTemplatePromise = null;
+        }
+      });
+
+      tileTemplatePromise = pending;
     }
 
     return tileTemplatePromise;
