@@ -18,65 +18,71 @@ const HEIGHTGRAPH_COLORS = {
   tooltipText: '#ffffff',
 };
 
+const CSS_HEIGHT = 220;
+const MIN_CSS_WIDTH = 280;
+
+// Cache holds the pre-rendered static layer of the chart (background, grid,
+// areas, lines, building overlay, distance labels) and the metadata needed
+// to draw the hover indicator on top. Invalidated via a fingerprint over
+// profileData stats + canvas size + devicePixelRatio.
+const cache = {
+  fingerprint: '',
+  offscreenCanvas: null,
+  offscreenContext: null,
+  cssWidth: 0,
+  cssHeight: 0,
+  graphWidth: 0,
+  graphHeight: 0,
+  padding: null,
+  xAxis: null,
+  yAxis: null,
+  points: null,
+};
+
 export function renderHeightgraph(profileData, hoverSampleIndex = null) {
   const canvas = document.getElementById('heightgraph-canvas');
   const context = canvas.getContext('2d');
   const devicePixelRatio = window.devicePixelRatio || 1;
-  const cssWidth = Math.max(280, canvas.clientWidth || 280);
-  const cssHeight = 220;
+  const cssWidth = Math.max(MIN_CSS_WIDTH, canvas.clientWidth || MIN_CSS_WIDTH);
+  const cssHeight = CSS_HEIGHT;
 
-  canvas.width = Math.floor(cssWidth * devicePixelRatio);
-  canvas.height = Math.floor(cssHeight * devicePixelRatio);
-  context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-  context.clearRect(0, 0, cssWidth, cssHeight);
-
-  const elevations = profileData.elevations.filter((value) => Number.isFinite(value));
-
+  const elevations = filterFiniteElevations(profileData?.elevations);
   if (elevations.length < 2) {
+    resizeCanvasIfNeeded(canvas, cssWidth, cssHeight, devicePixelRatio);
+    context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    context.clearRect(0, 0, cssWidth, cssHeight);
     drawEmptyState(context, cssWidth, cssHeight);
+    cache.fingerprint = '';
     return;
   }
 
-  const minElevation = Math.min(...elevations);
-  const maxElevation = Math.max(...elevations);
-  const yAxis = createNiceAxis(minElevation, maxElevation, 4);
-  const xAxis = createDistanceAxis(Math.max(profileData.stats.distanceMeters, 1), 4);
-  const padding = getChartPadding(context, yAxis);
-  const elevationRange = Math.max(1, yAxis.max - yAxis.min);
+  const fingerprint = buildFingerprint(profileData, cssWidth, cssHeight, devicePixelRatio);
+  if (cache.fingerprint !== fingerprint) {
+    rebuildOffscreen(profileData, elevations, cssWidth, cssHeight, devicePixelRatio);
+    cache.fingerprint = fingerprint;
+  }
 
-  const graphWidth = cssWidth - padding.left - padding.right;
-  const graphHeight = cssHeight - padding.top - padding.bottom;
+  resizeCanvasIfNeeded(canvas, cssWidth, cssHeight, devicePixelRatio);
+  context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  context.drawImage(cache.offscreenCanvas, 0, 0, cssWidth, cssHeight);
 
-  renderHeightgraph.lastAxes = { xAxis, yAxis, padding };
+  if (hoverSampleIndex !== null && cache.points && cache.points[hoverSampleIndex]) {
+    const terrainElevations = profileData.terrainElevations?.length === profileData.elevations.length
+      ? profileData.terrainElevations
+      : profileData.elevations;
+    const buildingOffsets = profileData.buildingOffsets || [];
 
-  drawBackground(context, cssWidth, cssHeight);
-  drawGrid(context, graphWidth, graphHeight, yAxis, padding);
-
-  const terrainElevations = profileData.terrainElevations?.length === profileData.elevations.length
-    ? profileData.terrainElevations
-    : profileData.elevations;
-  const buildingOffsets = profileData.buildingOffsets || [];
-  const terrainPoints = createGraphPoints(profileData.samples, terrainElevations, xAxis.max, yAxis.min, elevationRange, graphWidth, graphHeight, padding);
-  const points = createGraphPoints(profileData.samples, profileData.elevations, xAxis.max, yAxis.min, elevationRange, graphWidth, graphHeight, padding);
-
-  drawArea(context, terrainPoints, graphHeight, padding);
-  drawLine(context, terrainPoints, HEIGHTGRAPH_COLORS.terrainLine, 1.75);
-  drawBuildingOverlay(context, terrainPoints, points, buildingOffsets);
-  drawLine(context, points, HEIGHTGRAPH_COLORS.line, 2.5);
-  drawDistanceLabels(context, graphWidth, graphHeight, xAxis, padding);
-
-  if (hoverSampleIndex !== null && points[hoverSampleIndex]) {
     drawHoverIndicator(
       context,
-      points[hoverSampleIndex],
+      cache.points[hoverSampleIndex],
       {
         elevation: profileData.elevations[hoverSampleIndex],
         terrainElevation: terrainElevations[hoverSampleIndex],
         buildingOffset: buildingOffsets[hoverSampleIndex] || 0,
       },
-      graphWidth,
-      graphHeight,
-      padding
+      cache.graphWidth,
+      cache.graphHeight,
+      cache.padding
     );
   }
 }
@@ -85,23 +91,39 @@ renderHeightgraph.getHoverIndex = function getHoverIndex(profileData, canvas, ev
   const rect = canvas.getBoundingClientRect();
   const relativeX = event.clientX - rect.left;
   const relativeY = event.clientY - rect.top;
-  const context = canvas.getContext('2d');
-  const cssWidth = Math.max(280, canvas.clientWidth || 280);
-  const cssHeight = 220;
-  const elevations = profileData.elevations.filter((value) => Number.isFinite(value));
-  const minElevation = elevations.length ? Math.min(...elevations) : 0;
-  const maxElevation = elevations.length ? Math.max(...elevations) : 1;
-  const yAxis = createNiceAxis(minElevation, maxElevation, 4);
-  const padding = getChartPadding(context, yAxis);
-  const graphWidth = cssWidth - padding.left - padding.right;
-  const graphHeight = cssHeight - padding.top - padding.bottom;
-  const xAxis = createDistanceAxis(Math.max(profileData.stats.distanceMeters, 1), 4);
+
+  const cssWidth = Math.max(MIN_CSS_WIDTH, canvas.clientWidth || MIN_CSS_WIDTH);
+  const cssHeight = CSS_HEIGHT;
+  const devicePixelRatio = window.devicePixelRatio || 1;
+  const fingerprint = buildFingerprint(profileData, cssWidth, cssHeight, devicePixelRatio);
+
+  let xAxis;
+  let padding;
+  let graphWidth;
+  let graphHeight;
+
+  if (cache.fingerprint === fingerprint && cache.padding) {
+    xAxis = cache.xAxis;
+    padding = cache.padding;
+    graphWidth = cache.graphWidth;
+    graphHeight = cache.graphHeight;
+  } else {
+    const context = canvas.getContext('2d');
+    const elevations = filterFiniteElevations(profileData?.elevations);
+    const minElevation = elevations.length ? Math.min(...elevations) : 0;
+    const maxElevation = elevations.length ? Math.max(...elevations) : 1;
+    const yAxis = createNiceAxis(minElevation, maxElevation, 4);
+    padding = getChartPadding(context, yAxis);
+    graphWidth = cssWidth - padding.left - padding.right;
+    graphHeight = cssHeight - padding.top - padding.bottom;
+    xAxis = createDistanceAxis(Math.max(profileData.stats.distanceMeters, 1), 4);
+  }
 
   if (
-    relativeX < padding.left ||
-    relativeX > padding.left + graphWidth ||
-    relativeY < padding.top ||
-    relativeY > padding.top + graphHeight
+    relativeX < padding.left
+    || relativeX > padding.left + graphWidth
+    || relativeY < padding.top
+    || relativeY > padding.top + graphHeight
   ) {
     return null;
   }
@@ -123,8 +145,99 @@ renderHeightgraph.getHoverIndex = function getHoverIndex(profileData, canvas, ev
   return nearestIndex;
 };
 
-if (typeof window !== 'undefined') {
-  window.__heightgraphDebug = renderHeightgraph;
+function buildFingerprint(profileData, cssWidth, cssHeight, devicePixelRatio) {
+  if (!profileData) {
+    return '';
+  }
+  const stats = profileData.stats || {};
+  const sampleCount = profileData.samples?.length || 0;
+  const buildingHits = (profileData.buildingOffsets || [])
+    .reduce((sum, value) => sum + (value > 0 ? 1 : 0), 0);
+  return [
+    sampleCount,
+    stats.distanceMeters,
+    stats.minElevation,
+    stats.maxElevation,
+    stats.ascentMeters,
+    stats.descentMeters,
+    buildingHits,
+    cssWidth,
+    cssHeight,
+    devicePixelRatio,
+  ].join('|');
+}
+
+function filterFiniteElevations(elevations) {
+  if (!Array.isArray(elevations)) {
+    return [];
+  }
+  const finite = [];
+  for (const value of elevations) {
+    if (Number.isFinite(value)) {
+      finite.push(value);
+    }
+  }
+  return finite;
+}
+
+function resizeCanvasIfNeeded(canvas, cssWidth, cssHeight, devicePixelRatio) {
+  const bitmapWidth = Math.floor(cssWidth * devicePixelRatio);
+  const bitmapHeight = Math.floor(cssHeight * devicePixelRatio);
+  if (canvas.width !== bitmapWidth || canvas.height !== bitmapHeight) {
+    canvas.width = bitmapWidth;
+    canvas.height = bitmapHeight;
+  }
+}
+
+function rebuildOffscreen(profileData, elevations, cssWidth, cssHeight, devicePixelRatio) {
+  if (!cache.offscreenCanvas) {
+    cache.offscreenCanvas = document.createElement('canvas');
+    cache.offscreenContext = cache.offscreenCanvas.getContext('2d');
+  }
+  const bitmapWidth = Math.floor(cssWidth * devicePixelRatio);
+  const bitmapHeight = Math.floor(cssHeight * devicePixelRatio);
+  if (cache.offscreenCanvas.width !== bitmapWidth || cache.offscreenCanvas.height !== bitmapHeight) {
+    cache.offscreenCanvas.width = bitmapWidth;
+    cache.offscreenCanvas.height = bitmapHeight;
+  }
+  const context = cache.offscreenContext;
+  context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  context.clearRect(0, 0, cssWidth, cssHeight);
+
+  const minElevation = Math.min(...elevations);
+  const maxElevation = Math.max(...elevations);
+  const yAxis = createNiceAxis(minElevation, maxElevation, 4);
+  const xAxis = createDistanceAxis(Math.max(profileData.stats.distanceMeters, 1), 4);
+  const padding = getChartPadding(context, yAxis);
+  const elevationRange = Math.max(1, yAxis.max - yAxis.min);
+
+  const graphWidth = cssWidth - padding.left - padding.right;
+  const graphHeight = cssHeight - padding.top - padding.bottom;
+
+  drawBackground(context, cssWidth, cssHeight);
+  drawGrid(context, graphWidth, graphHeight, yAxis, padding);
+
+  const terrainElevations = profileData.terrainElevations?.length === profileData.elevations.length
+    ? profileData.terrainElevations
+    : profileData.elevations;
+  const buildingOffsets = profileData.buildingOffsets || [];
+  const terrainPoints = createGraphPoints(profileData.samples, terrainElevations, xAxis.max, yAxis.min, elevationRange, graphWidth, graphHeight, padding);
+  const points = createGraphPoints(profileData.samples, profileData.elevations, xAxis.max, yAxis.min, elevationRange, graphWidth, graphHeight, padding);
+
+  drawArea(context, terrainPoints, graphHeight, padding);
+  drawLine(context, terrainPoints, HEIGHTGRAPH_COLORS.terrainLine, 1.75);
+  drawBuildingOverlay(context, terrainPoints, points, buildingOffsets);
+  drawLine(context, points, HEIGHTGRAPH_COLORS.line, 2.5);
+  drawDistanceLabels(context, graphWidth, graphHeight, xAxis, padding);
+
+  cache.cssWidth = cssWidth;
+  cache.cssHeight = cssHeight;
+  cache.graphWidth = graphWidth;
+  cache.graphHeight = graphHeight;
+  cache.padding = padding;
+  cache.xAxis = xAxis;
+  cache.yAxis = yAxis;
+  cache.points = points;
 }
 
 function drawBackground(context, width, height) {
