@@ -52,11 +52,11 @@ Skala
 - **Problem**: Kein Wrap auf `lng`, kein Clamp auf Web-Mercator-Lat-Limit (±85.0511°). Dragging eines Markers in den Pazifik oder Richtung Pol gibt 404 → das LRU evicted die rejected Promise inzwischen wieder (Punkt #3 erledigt) — aber Sampling produziert weiterhin Lücken.
 - **Fix**: `lng = ((lng + 180) % 360 + 360) % 360 - 180`, `lat` auf ±85.0511° clampen. Sehr unwichtig für DACH-Use-Case.
 
-### 7. [medium | M] Mapterhorn Z12 vs Building Z14 — Tile-Auflösung dokumentieren
+### 7. [medium | M] Mapterhorn Z12 vs Building Z14 — Tile-Auflösung dokumentieren ✅
 
-- [ ] **Wo**: [js/elevation/mapterhornClient.js:3](js/elevation/mapterhornClient.js#L3), [js/elevation/buildingProfileSampler.js:7](js/elevation/buildingProfileSampler.js#L7)
-- **Problem**: Z12-Terrarium = ~38 m/Pixel — limitiert die echte Profil-Auflösung, nicht das 10-m-Sample-Spacing. Inkonsistent ohne Erklärung.
-- **Fix**: Begründung als Kommentar, oder Z auf 13/14 hochziehen (vier-mal mehr Tiles, aber via Cache OK).
+- [x] **Wo**: [js/elevation/mapterhornClient.js](js/elevation/mapterhornClient.js)
+- **Problem**: Z12 + 512px-Tiles ≈ 12 m/Pixel auf DACH-Breitengrad — limitierte die effektive Profil-Auflösung, nicht das 10-m-Sample-Spacing. Mehrere Samples landeten oft im selben Terrain-Pixel → Heightgraph zeigte Stufen statt Steigungen.
+- **Fix**: `TILE_ZOOM` auf 13 hochgezogen (~6 m/Pixel in DACH) und ausführlich kommentiert. ~4× mehr Tile-Fetches, aber dank LRU-Cache (siehe #3 erledigt) verschmerzbar. Building-Sampler bleibt auf Z14, weil das Building-Layer in OFM auch dort ausgeliefert wird.
 
 ---
 

@@ -1,7 +1,12 @@
 import { decodeTerrariumElevation, lonLatToTileSample } from './terrarium.js';
 import { createLruPromiseCache } from '../utils/lruPromiseCache.js';
 
-const TILE_ZOOM = 12;
+// Z13 + 512px tiles ≈ 6 m horizontal resolution at DACH latitudes (~51°N).
+// At our default 10 m sample spacing that's ~2 samples per terrain pixel,
+// so the elevation profile resolves small slope changes instead of stepping
+// across multiple samples sharing one pixel value (Z12 was ~12 m/px). Costs
+// 4× the tile fetches per route — still cheap thanks to the LRU cache.
+const TILE_ZOOM = 13;
 const TILE_ENDPOINT = 'https://tiles.mapterhorn.com';
 const TILE_CACHE_LIMIT = 64;
 
