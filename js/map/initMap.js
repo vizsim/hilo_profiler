@@ -94,6 +94,7 @@ export function initMap(appState) {
   const eliBasemapController = createEliBasemapController(map, appState);
 
   map.addControl(new maplibregl.NavigationControl(), 'bottom-left');
+  registerMissingStyleImageFallbacks(map);
 
   let hoverMarker = null;
 
@@ -167,6 +168,37 @@ export function initMap(appState) {
   });
 
   return { map };
+}
+
+function registerMissingStyleImageFallbacks(map) {
+  map.on('styleimagemissing', (event) => {
+    const circleMatch = /^circle-(\d+)$/.exec(event.id || '');
+    if (!circleMatch || map.hasImage(event.id)) {
+      return;
+    }
+
+    const diameter = Number.parseInt(circleMatch[1], 10);
+    if (!Number.isFinite(diameter) || diameter <= 0) {
+      return;
+    }
+
+    map.addImage(event.id, createCircleStyleImage(diameter));
+  });
+}
+
+function createCircleStyleImage(diameter) {
+  const canvas = document.createElement('canvas');
+  canvas.width = diameter;
+  canvas.height = diameter;
+
+  const context = canvas.getContext('2d');
+  context.clearRect(0, 0, diameter, diameter);
+  context.fillStyle = 'rgba(212, 214, 216, 0.9)';
+  context.beginPath();
+  context.arc(diameter / 2, diameter / 2, Math.max(1, diameter / 2 - 1), 0, Math.PI * 2);
+  context.fill();
+
+  return context.getImageData(0, 0, diameter, diameter);
 }
 
 function createPointMarker(point, kind, onDragEnd, label = '') {

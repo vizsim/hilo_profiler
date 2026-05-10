@@ -1,5 +1,5 @@
 import { createAppState } from './js/state/appState.js';
-import { initMap } from './js/map/initMap.js?v=20260510a';
+import { initMap } from './js/map/initMap.js';
 import { setupPointSelection } from './js/map/pointSelection.js';
 import { setupProfileView } from './js/profile/profileView.js?v=20260504c';
 import { createMapterhornClient } from './js/elevation/mapterhornClient.js';
@@ -10,8 +10,6 @@ import { setupPhotonGeocoder } from './js/utils/geocoder.js';
 const appState = createAppState();
 const mapApi = initMap(appState);
 const mapterhornClient = createMapterhornClient();
-
-globalThis.__HILO_MAP__ = mapApi.map;
 
 setupPointSelection(mapApi.map, appState, mapApi);
 setupProfileView(appState);
