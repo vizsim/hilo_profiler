@@ -28,17 +28,24 @@ export function createBuildingProfileSampler() {
     const { tileX, tileY } = lonLatToTileSample(lng, lat, BUILDING_TILE_ZOOM, BUILDING_TILE_SIZE);
     const buildings = await getBuildingsForTile(tileX, tileY);
 
+    // OFM building features can overlap (e.g. a low podium feature plus a
+    // separate tower feature at the same lng/lat). The 3D renderer extrudes
+    // every match, so the visually tallest part wins. Mirror that here by
+    // returning the max height across all matches instead of the first hit.
+    let maxHeight = 0;
     for (const building of buildings) {
       if (!containsLngLat(building.bounds, lng, lat)) {
         continue;
       }
-
+      if (building.height <= maxHeight) {
+        continue;
+      }
       if (geometryContainsPoint(building.geometry, lng, lat)) {
-        return building.height;
+        maxHeight = building.height;
       }
     }
 
-    return 0;
+    return maxHeight;
   }
 
   async function getBuildingsForTile(tileX, tileY) {
