@@ -72,6 +72,7 @@ const CUSTOM_RUNTIME_LAYER_IDS = new Set([
   'eli-local-imagery-layer',
   'hilo-3d-buildings',
   'selection-line',
+  'selection-line-buildings',
   'selection-line-hit',
   'hillshade-layer',
 ]);
@@ -89,6 +90,46 @@ function getDirectLineKey(directLine) {
   }
 
   return directLine.coordinates.map((coordinate) => coordinate.join(',')).join('|');
+}
+
+function buildOverBuildingLineFeatures(profileData) {
+  const samples = profileData?.samples;
+  const offsets = profileData?.buildingOffsets;
+  if (!samples?.length || !offsets?.length || samples.length < 2) {
+    return [];
+  }
+
+  const features = [];
+  let currentCoords = null;
+
+  for (let index = 0; index < samples.length - 1; index += 1) {
+    const overBuilding = (offsets[index] > 0) || (offsets[index + 1] > 0);
+    if (overBuilding) {
+      if (!currentCoords) {
+        currentCoords = [[samples[index].lng, samples[index].lat]];
+      }
+      currentCoords.push([samples[index + 1].lng, samples[index + 1].lat]);
+    } else if (currentCoords) {
+      if (currentCoords.length >= 2) {
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: currentCoords },
+          properties: {},
+        });
+      }
+      currentCoords = null;
+    }
+  }
+
+  if (currentCoords && currentCoords.length >= 2) {
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: currentCoords },
+      properties: {},
+    });
+  }
+
+  return features;
 }
 
 export function initMap(appState) {
@@ -162,6 +203,7 @@ export function initMap(appState) {
       || state.terrainEnabled !== previousState.terrainEnabled
       || state.buildingsEnabled !== previousState.buildingsEnabled
       || state.buildingSource !== previousState.buildingSource;
+    const profileDataChanged = state.profileData !== previousState.profileData;
     latestState = state;
     eliBasemapController.updateState(state);
     const source = map.getSource('selection-line');
@@ -180,6 +222,15 @@ export function initMap(appState) {
                 },
               ]
             : []
+        )
+      );
+    }
+
+    const buildingsLineSource = map.getSource('selection-line-buildings');
+    if (buildingsLineSource && (profileDataChanged || directLineChanged)) {
+      buildingsLineSource.setData(
+        buildFeatureCollection(
+          state.directLine ? buildOverBuildingLineFeatures(state.profileData) : []
         )
       );
     }
@@ -310,6 +361,13 @@ function ensureMapArtifacts(map, state) {
     });
   }
 
+  if (!map.getSource('selection-line-buildings')) {
+    map.addSource('selection-line-buildings', {
+      type: 'geojson',
+      data: buildFeatureCollection(),
+    });
+  }
+
   if (!map.getSource('terrain-dem')) {
     map.addSource('terrain-dem', {
       type: 'raster-dem',
@@ -365,6 +423,19 @@ function ensureMapArtifacts(map, state) {
     );
   }
 
+  if (!map.getLayer('selection-line-buildings')) {
+    map.addLayer({
+      id: 'selection-line-buildings',
+      type: 'line',
+      source: 'selection-line-buildings',
+      paint: {
+        'line-color': '#d97706',
+        'line-width': 4,
+        'line-opacity': 0.95,
+      },
+    });
+  }
+
   if (!map.getLayer('selection-line-hit')) {
     map.addLayer({
       id: 'selection-line-hit',
@@ -394,6 +465,15 @@ function ensureMapArtifacts(map, state) {
               },
             ]
           : []
+      )
+    );
+  }
+
+  const refreshedBuildingsLineSource = map.getSource('selection-line-buildings');
+  if (refreshedBuildingsLineSource) {
+    refreshedBuildingsLineSource.setData(
+      buildFeatureCollection(
+        state.directLine ? buildOverBuildingLineFeatures(state.profileData) : []
       )
     );
   }
