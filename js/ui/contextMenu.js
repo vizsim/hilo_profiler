@@ -1,7 +1,15 @@
 import { addWaypointSelection, setEndSelection, setStartSelection, toPoint } from '../map/pointSelection.js';
 
+// If the right mouse button moves more than this many pixels between
+// pointerdown and contextmenu, treat it as a 3D-rotate/pitch drag and
+// suppress the menu — only short, in-place right-clicks should open it.
+const RIGHT_DRAG_THRESHOLD_PX = 5;
+const RIGHT_BUTTON = 2;
+
 let contextMenu = null;
 let currentLngLat = null;
+let rightDownPoint = null;
+let rightDragged = false;
 
 export function setupContextMenu(map, appState) {
   contextMenu = document.getElementById('context-menu');
@@ -11,9 +19,31 @@ export function setupContextMenu(map, appState) {
 
   const mapContainer = map.getContainer();
 
+  mapContainer.addEventListener('pointerdown', (event) => {
+    if (event.button !== RIGHT_BUTTON) {
+      return;
+    }
+    rightDownPoint = { x: event.clientX, y: event.clientY };
+    rightDragged = false;
+  }, true);
+
+  mapContainer.addEventListener('pointermove', (event) => {
+    if (!rightDownPoint || rightDragged) {
+      return;
+    }
+    const dx = event.clientX - rightDownPoint.x;
+    const dy = event.clientY - rightDownPoint.y;
+    if (Math.hypot(dx, dy) > RIGHT_DRAG_THRESHOLD_PX) {
+      rightDragged = true;
+    }
+  }, true);
+
   map.on('contextmenu', (event) => {
     event.originalEvent?.preventDefault();
     event.originalEvent?.stopPropagation();
+    if (consumeRightDrag()) {
+      return;
+    }
     showContextMenu(map, event.lngLat, event.point);
   });
 
@@ -28,6 +58,10 @@ export function setupContextMenu(map, appState) {
       event.preventDefault();
       event.stopPropagation();
 
+      if (consumeRightDrag()) {
+        return;
+      }
+
       const rect = canvas.getBoundingClientRect();
       const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       showContextMenu(map, map.unproject([point.x, point.y]), point);
@@ -39,6 +73,13 @@ export function setupContextMenu(map, appState) {
   map.on('zoom', hideContextMenu);
 
   setupMenuHandlers(appState);
+}
+
+function consumeRightDrag() {
+  const wasDragged = rightDragged;
+  rightDownPoint = null;
+  rightDragged = false;
+  return wasDragged;
 }
 
 function showContextMenu(map, lngLat, point) {
