@@ -3,6 +3,7 @@ import { initMap } from './js/map/initMap.js';
 import { setupPointSelection } from './js/map/pointSelection.js';
 import { setupProfileView } from './js/profile/profileView.js?v=20260504c';
 import { createMapterhornClient } from './js/elevation/mapterhornClient.js';
+import { createBuildingProfileSampler } from './js/elevation/buildingProfileSampler.js';
 import { setupDirectProfileController } from './js/elevation/directProfileController.js';
 import { setupContextMenu } from './js/ui/contextMenu.js';
 import { setupPhotonGeocoder } from './js/utils/geocoder.js';
@@ -12,10 +13,11 @@ const BUILDING_SUPPORTED_BASEMAPS = new Set(['positron', 'dark', 'osm', 'satelli
 const appState = createAppState();
 const mapApi = initMap(appState);
 const mapterhornClient = createMapterhornClient();
+const buildingProfileSampler = createBuildingProfileSampler();
 
 setupPointSelection(mapApi.map, appState, mapApi);
 setupProfileView(appState);
-setupDirectProfileController(appState, mapterhornClient);
+setupDirectProfileController(appState, mapterhornClient, buildingProfileSampler);
 setupContextMenu(mapApi.map, appState);
 setupPhotonGeocoder(mapApi.map);
 

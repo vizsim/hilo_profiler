@@ -7,6 +7,10 @@ const HEIGHTGRAPH_COLORS = {
   axisText: '#466072',
   areaTop: 'rgba(16, 185, 129, 0.42)',
   areaBottom: 'rgba(37, 99, 235, 0.08)',
+  terrainLine: 'rgba(15, 118, 110, 0.44)',
+  buildingAreaTop: 'rgba(245, 158, 11, 0.38)',
+  buildingAreaBottom: 'rgba(234, 88, 12, 0.2)',
+  buildingLine: '#b45309',
   line: '#0f766e',
   hoverLine: 'rgba(37, 99, 235, 0.45)',
   hoverPoint: '#2563eb',
@@ -48,21 +52,28 @@ export function renderHeightgraph(profileData, hoverSampleIndex = null) {
   drawBackground(context, cssWidth, cssHeight);
   drawGrid(context, graphWidth, graphHeight, yAxis, padding);
 
-  const points = profileData.samples.map((sample, index) => {
-    const x = padding.left + (graphWidth * sample.distanceMeters) / xAxis.max;
-    const y = padding.top + graphHeight - ((profileData.elevations[index] - yAxis.min) / elevationRange) * graphHeight;
-    return { x, y };
-  });
+  const terrainElevations = profileData.terrainElevations?.length === profileData.elevations.length
+    ? profileData.terrainElevations
+    : profileData.elevations;
+  const buildingOffsets = profileData.buildingOffsets || [];
+  const terrainPoints = createGraphPoints(profileData.samples, terrainElevations, xAxis.max, yAxis.min, elevationRange, graphWidth, graphHeight, padding);
+  const points = createGraphPoints(profileData.samples, profileData.elevations, xAxis.max, yAxis.min, elevationRange, graphWidth, graphHeight, padding);
 
-  drawArea(context, points, graphHeight, padding);
-  drawLine(context, points);
+  drawArea(context, terrainPoints, graphHeight, padding);
+  drawLine(context, terrainPoints, HEIGHTGRAPH_COLORS.terrainLine, 1.75);
+  drawBuildingOverlay(context, terrainPoints, points, buildingOffsets);
+  drawLine(context, points, HEIGHTGRAPH_COLORS.line, 2.5);
   drawDistanceLabels(context, graphWidth, graphHeight, xAxis, padding);
 
   if (hoverSampleIndex !== null && points[hoverSampleIndex]) {
     drawHoverIndicator(
       context,
       points[hoverSampleIndex],
-      profileData.elevations[hoverSampleIndex],
+      {
+        elevation: profileData.elevations[hoverSampleIndex],
+        terrainElevation: terrainElevations[hoverSampleIndex],
+        buildingOffset: buildingOffsets[hoverSampleIndex] || 0,
+      },
       graphWidth,
       graphHeight,
       padding
@@ -163,9 +174,87 @@ function drawArea(context, points, graphHeight, padding) {
   context.fill();
 }
 
-function drawLine(context, points) {
-  context.strokeStyle = HEIGHTGRAPH_COLORS.line;
-  context.lineWidth = 2.5;
+function drawBuildingOverlay(context, terrainPoints, combinedPoints, buildingOffsets) {
+  if (!terrainPoints.length || !combinedPoints.length || !buildingOffsets.length) {
+    return;
+  }
+
+  let segmentStart = null;
+
+  for (let index = 0; index < combinedPoints.length; index += 1) {
+    const hasBuilding = Number.isFinite(buildingOffsets[index])
+      && buildingOffsets[index] > 0
+      && terrainPoints[index]
+      && combinedPoints[index];
+
+    if (hasBuilding && segmentStart === null) {
+      segmentStart = index;
+      continue;
+    }
+
+    if (!hasBuilding && segmentStart !== null) {
+      drawBuildingSegment(context, terrainPoints, combinedPoints, segmentStart, index - 1);
+      segmentStart = null;
+    }
+  }
+
+  if (segmentStart !== null) {
+    drawBuildingSegment(context, terrainPoints, combinedPoints, segmentStart, combinedPoints.length - 1);
+  }
+}
+
+function drawBuildingSegment(context, terrainPoints, combinedPoints, startIndex, endIndex) {
+  if (startIndex > endIndex) {
+    return;
+  }
+
+  const fillGradient = context.createLinearGradient(0, combinedPoints[startIndex].y, 0, terrainPoints[startIndex].y);
+  fillGradient.addColorStop(0, HEIGHTGRAPH_COLORS.buildingAreaTop);
+  fillGradient.addColorStop(1, HEIGHTGRAPH_COLORS.buildingAreaBottom);
+  context.fillStyle = fillGradient;
+
+  if (startIndex === endIndex) {
+    const point = combinedPoints[startIndex];
+    const basePoint = terrainPoints[startIndex];
+    const halfWidth = getSingleSampleWidth(combinedPoints, startIndex);
+    context.fillRect(point.x - halfWidth, point.y, halfWidth * 2, Math.max(1, basePoint.y - point.y));
+    context.strokeStyle = HEIGHTGRAPH_COLORS.buildingLine;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(point.x - halfWidth, point.y);
+    context.lineTo(point.x + halfWidth, point.y);
+    context.stroke();
+    return;
+  }
+
+  context.beginPath();
+  context.moveTo(combinedPoints[startIndex].x, combinedPoints[startIndex].y);
+  for (let index = startIndex + 1; index <= endIndex; index += 1) {
+    context.lineTo(combinedPoints[index].x, combinedPoints[index].y);
+  }
+  for (let index = endIndex; index >= startIndex; index -= 1) {
+    context.lineTo(terrainPoints[index].x, terrainPoints[index].y);
+  }
+  context.closePath();
+  context.fill();
+
+  drawLine(
+    context,
+    combinedPoints.slice(startIndex, endIndex + 1),
+    HEIGHTGRAPH_COLORS.buildingLine,
+    2.1
+  );
+}
+
+function getSingleSampleWidth(points, index) {
+  const previousSpan = index > 0 ? points[index].x - points[index - 1].x : 0;
+  const nextSpan = index < points.length - 1 ? points[index + 1].x - points[index].x : 0;
+  return Math.max(4, Math.min(14, Math.max(previousSpan, nextSpan, 8) * 0.45));
+}
+
+function drawLine(context, points, strokeStyle = HEIGHTGRAPH_COLORS.line, lineWidth = 2.5) {
+  context.strokeStyle = strokeStyle;
+  context.lineWidth = lineWidth;
   context.beginPath();
   points.forEach((point, index) => {
     if (index === 0) {
@@ -177,7 +266,7 @@ function drawLine(context, points) {
   context.stroke();
 }
 
-function drawHoverIndicator(context, point, elevation, graphWidth, graphHeight, padding) {
+function drawHoverIndicator(context, point, hoverData, graphWidth, graphHeight, padding) {
   context.strokeStyle = HEIGHTGRAPH_COLORS.hoverLine;
   context.lineWidth = 1.5;
   context.beginPath();
@@ -193,20 +282,40 @@ function drawHoverIndicator(context, point, elevation, graphWidth, graphHeight, 
   context.fill();
   context.stroke();
 
-  if (Number.isFinite(elevation)) {
-    drawHoverTooltip(context, point, formatElevationTick(elevation), graphWidth, graphHeight, padding);
+  if (Number.isFinite(hoverData.elevation)) {
+    drawHoverTooltip(context, point, buildHoverLabels(hoverData), graphWidth, graphHeight, padding);
   }
 }
 
-function drawHoverTooltip(context, point, label, graphWidth, graphHeight, padding) {
+function buildHoverLabels({ elevation, terrainElevation, buildingOffset }) {
+  if (!Number.isFinite(elevation)) {
+    return [];
+  }
+
+  if (Number.isFinite(terrainElevation) && Number.isFinite(buildingOffset) && buildingOffset > 0) {
+    return [
+      `Gesamt ${formatElevationTick(elevation)}`,
+      `Terrain ${formatElevationTick(terrainElevation)} + Geb. ${formatElevationTick(buildingOffset)}`,
+    ];
+  }
+
+  return [formatElevationTick(elevation)];
+}
+
+function drawHoverTooltip(context, point, labels, graphWidth, graphHeight, padding) {
+  if (!labels.length) {
+    return;
+  }
+
   context.save();
   context.font = '11px IBM Plex Sans, sans-serif';
   context.textAlign = 'center';
-  context.textBaseline = 'middle';
+  context.textBaseline = 'top';
 
-  const textWidth = context.measureText(label).width;
+  const textWidth = labels.reduce((widest, label) => Math.max(widest, context.measureText(label).width), 0);
+  const lineHeight = 13;
   const tooltipWidth = Math.ceil(textWidth + 16);
-  const tooltipHeight = 22;
+  const tooltipHeight = Math.ceil(labels.length * lineHeight + 10);
   const minX = padding.left;
   const maxX = padding.left + graphWidth - tooltipWidth;
   const tooltipX = Math.min(Math.max(point.x - tooltipWidth / 2, minX), maxX);
@@ -219,8 +328,18 @@ function drawHoverTooltip(context, point, label, graphWidth, graphHeight, paddin
   context.fill();
 
   context.fillStyle = HEIGHTGRAPH_COLORS.tooltipText;
-  context.fillText(label, tooltipCenterX, tooltipY + tooltipHeight / 2 + 0.5);
+  labels.forEach((label, index) => {
+    context.fillText(label, tooltipCenterX, tooltipY + 5 + index * lineHeight);
+  });
   context.restore();
+}
+
+function createGraphPoints(samples, elevations, maxDistance, minElevation, elevationRange, graphWidth, graphHeight, padding) {
+  return samples.map((sample, index) => {
+    const x = padding.left + (graphWidth * sample.distanceMeters) / maxDistance;
+    const y = padding.top + graphHeight - ((elevations[index] - minElevation) / elevationRange) * graphHeight;
+    return { x, y };
+  });
 }
 
 function drawRoundedRectPath(context, x, y, width, height, radius) {

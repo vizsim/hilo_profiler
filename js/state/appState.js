@@ -53,6 +53,8 @@ function cloneState(state) {
           ...state.profileData,
           samples: state.profileData.samples.map((sample) => ({ ...sample })),
           elevations: [...state.profileData.elevations],
+          terrainElevations: [...(state.profileData.terrainElevations || [])],
+          buildingOffsets: [...(state.profileData.buildingOffsets || [])],
           stats: { ...state.profileData.stats },
         }
       : null,
