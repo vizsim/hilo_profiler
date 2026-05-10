@@ -30,6 +30,28 @@ const BASEMAPS = {
   },
 };
 
+const SKY_STYLE = {
+  'sky-color': '#199EF3',
+  'sky-horizon-blend': 0.5,
+  'horizon-color': '#ffffff',
+  'horizon-fog-blend': 0.5,
+  'fog-color': '#0000ff',
+  'fog-ground-blend': 0.5,
+  'atmosphere-blend': [
+    'interpolate',
+    ['linear'],
+    ['zoom'],
+    0,
+    1,
+    10,
+    1,
+    12,
+    0,
+  ],
+};
+
+const SKY_SYNC_PENDING_KEY = '__hiloSkySyncPending';
+
 function buildFeatureCollection(features = []) {
   return {
     type: 'FeatureCollection',
@@ -56,6 +78,7 @@ export function initMap(appState) {
     zoom: 5.7,
     minZoom: 3,
     maxZoom: 18,
+    maxPitch: 85,
   });
   const eliBasemapController = createEliBasemapController(map, appState);
 
@@ -115,12 +138,11 @@ export function initMap(appState) {
       hoverMarker = nextMarker;
     });
 
-    applyTerrainState(map, state);
-
     if (basemapChanged && BASEMAPS[state.basemap]?.kind === 'vector') {
       eliBasemapController.prepareForStyleChange();
       map.setStyle(BASEMAPS[state.basemap].style);
     } else {
+      applyTerrainState(map, state);
       applyDisplayedBasemap(map, state);
       eliBasemapController.applyForState(state);
     }
@@ -174,6 +196,16 @@ function ensureMapArtifacts(map, state) {
     });
   }
 
+  if (!map.getSource('hillshade-dem')) {
+    map.addSource('hillshade-dem', {
+      type: 'raster-dem',
+      url: 'https://tiles.mapterhorn.com/tilejson.json',
+      tileSize: 512,
+      encoding: 'terrarium',
+      attribution: '© Mapterhorn',
+    });
+  }
+
   ensureRasterBasemapLayers(map);
 
   if (!map.getLayer('selection-line')) {
@@ -194,7 +226,7 @@ function ensureMapArtifacts(map, state) {
       {
         id: 'hillshade-layer',
         type: 'hillshade',
-        source: 'terrain-dem',
+        source: 'hillshade-dem',
         layout: {
           visibility: state.hillshadeEnabled ? 'visible' : 'none',
         },
@@ -252,10 +284,40 @@ function applyTerrainState(map, state) {
   if (map.getSource('terrain-dem')) {
     map.setTerrain(state.terrainEnabled ? { source: 'terrain-dem', exaggeration: 1 } : null);
 
-    if (state.terrainEnabled && map.getPitch() < 35) {
-      map.easeTo({ pitch: 55, duration: 700 });
+    if (state.terrainEnabled && map.getPitch() < 70) {
+      map.easeTo({ pitch: 82, duration: 700 });
+    } else if (!state.terrainEnabled && map.getPitch() > 60) {
+      map.easeTo({ pitch: 0, duration: 500 });
     }
   }
+
+  syncSkyState(map);
+}
+
+function syncSkyState(map) {
+  if (typeof map.setSky !== 'function') {
+    return;
+  }
+
+  const applySkyForCurrentTerrain = () => {
+    map.setSky(map.getTerrain() ? SKY_STYLE : undefined);
+  };
+
+  if (map.isStyleLoaded()) {
+    applySkyForCurrentTerrain();
+  }
+
+  if (map[SKY_SYNC_PENDING_KEY]) {
+    return;
+  }
+
+  map[SKY_SYNC_PENDING_KEY] = true;
+  map.once('idle', () => {
+    map[SKY_SYNC_PENDING_KEY] = false;
+    if (map.isStyleLoaded()) {
+      applySkyForCurrentTerrain();
+    }
+  });
 }
 
 function applyDisplayedBasemap(map, state) {

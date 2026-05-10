@@ -11,6 +11,8 @@ const appState = createAppState();
 const mapApi = initMap(appState);
 const mapterhornClient = createMapterhornClient();
 
+globalThis.__HILO_MAP__ = mapApi.map;
+
 setupPointSelection(mapApi.map, appState, mapApi);
 setupProfileView(appState);
 setupDirectProfileController(appState, mapterhornClient);
