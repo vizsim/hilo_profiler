@@ -138,7 +138,7 @@
 
   <section id="map-settings-panel" class="map-settings-panel" aria-labelledby="map-settings-title">
     <div class="section-title-row panel-section-header">
-      <h2 id="map-settings-title">Basemap</h2>
+      <h2 id="map-settings-title">Karte</h2>
       <button
         id="map-settings-panel-toggle"
         class="panel-toggle"
@@ -203,6 +203,72 @@
             <input id="toggle-hillshade" type="checkbox" checked />
             <span class="switch-slider"></span>
           </label>
+        </div>
+      </div>
+
+      <div class="building-options">
+        <div class="building-card">
+          <div class="building-card-top">
+            <div class="building-card-copy">
+              <strong>3D-Gebäude</strong>
+            </div>
+            <label class="switch">
+              <input id="toggle-buildings" type="checkbox" />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <div class="building-source-header">
+            <strong>Datenquelle</strong>
+          </div>
+          <div class="building-source-grid building-source-grid-compact" role="group" aria-label="Gebaeudequelle auswaehlen">
+            <button
+              class="building-source-btn building-source-btn-compact selected"
+              type="button"
+              data-building-source="osm"
+              data-tooltip="Sofort nutzbar und weltweit verfügbar. Höhen kommen aus OSM-Tags und sind in Deutschland regional lückenhaft."
+              aria-label="OSM OpenFreeMap. Aktiv fuer Phase 1."
+            >
+              <span class="building-source-name">OSM</span>
+              <span class="building-source-meta">live</span>
+            </button>
+            <button
+              class="building-source-btn building-source-btn-compact is-disabled"
+              type="button"
+              data-building-source="overture"
+              data-tooltip="Bessere globale Footprint-Abdeckung als OSM, aber noch Beta und mit sinnvollem Eigenhosting."
+              aria-label="Overture. Noch nicht verfuegbar."
+              disabled
+            >
+              <span class="building-source-name">Overture</span>
+              <span class="building-source-meta">folgt</span>
+            </button>
+            <button
+              class="building-source-btn building-source-btn-compact is-disabled"
+              type="button"
+              data-building-source="gba"
+              data-tooltip="GlobalBuildingAtlas mit ML-vorhergesagten Höhen. Weltweit, aber nicht amtlich und teils mehrere Meter daneben."
+              aria-label="GBA. Noch nicht verfuegbar."
+              disabled
+            >
+              <span class="building-source-name">GBA</span>
+              <span class="building-source-meta">folgt</span>
+            </button>
+            <button
+              class="building-source-btn building-source-btn-compact is-disabled"
+              type="button"
+              data-building-source="eubucco"
+              data-tooltip="EU-Fokus mit oft sehr guten Höhen für Deutschland und Europa, aber ohne globalen Fallback."
+              aria-label="EUBUCCO. Noch nicht verfuegbar."
+              disabled
+            >
+              <span class="building-source-name">EUBUCCO</span>
+              <span class="building-source-meta">folgt</span>
+            </button>
+          </div>
+          <p id="building-source-status" class="building-source-status building-source-status-compact">
+            Ab Zoom 14 sichtbar.
+          </p>
         </div>
       </div>
     </div>

@@ -3,17 +3,21 @@ import { initMap } from './js/map/initMap.js';
 import { setupPointSelection } from './js/map/pointSelection.js';
 import { setupProfileView } from './js/profile/profileView.js?v=20260504c';
 import { createMapterhornClient } from './js/elevation/mapterhornClient.js';
+import { createBuildingProfileSampler } from './js/elevation/buildingProfileSampler.js';
 import { setupDirectProfileController } from './js/elevation/directProfileController.js';
 import { setupContextMenu } from './js/ui/contextMenu.js';
 import { setupPhotonGeocoder } from './js/utils/geocoder.js';
 
+const BUILDING_SUPPORTED_BASEMAPS = new Set(['positron', 'dark', 'osm', 'satellite', 'eli-local']);
+
 const appState = createAppState();
 const mapApi = initMap(appState);
 const mapterhornClient = createMapterhornClient();
+const buildingProfileSampler = createBuildingProfileSampler();
 
 setupPointSelection(mapApi.map, appState, mapApi);
 setupProfileView(appState);
-setupDirectProfileController(appState, mapterhornClient);
+setupDirectProfileController(appState, mapterhornClient, buildingProfileSampler);
 setupContextMenu(mapApi.map, appState);
 setupPhotonGeocoder(mapApi.map);
 
@@ -21,6 +25,9 @@ const resetButton = document.getElementById('reset-points');
 const basemapButtons = Array.from(document.querySelectorAll('.basemap-btn'));
 const terrainToggle = document.getElementById('toggle-terrain');
 const hillshadeToggle = document.getElementById('toggle-hillshade');
+const buildingToggle = document.getElementById('toggle-buildings');
+const buildingSourceButtons = Array.from(document.querySelectorAll('[data-building-source]'));
+const buildingSourceStatus = document.getElementById('building-source-status');
 const mapSettingsToggle = document.getElementById('map-settings-toggle');
 const mapSettingsPanel = document.getElementById('map-settings-panel');
 const mapSettingsPanelToggle = document.getElementById('map-settings-panel-toggle');
@@ -31,6 +38,7 @@ const eliBasemapButtonDetail = document.getElementById('eli-basemap-button-detai
 const eliBasemapMenu = document.getElementById('eli-basemap-menu');
 const routingPanel = document.getElementById('routing-panel');
 const routingPanelToggle = document.getElementById('routing-panel-toggle');
+let latestUiState = appState.getState();
 
 basemapButtons.forEach((button) => {
   button.addEventListener('click', () => {
@@ -48,6 +56,21 @@ terrainToggle.addEventListener('change', (event) => {
 
 hillshadeToggle.addEventListener('change', (event) => {
   appState.setHillshadeEnabled(event.target.checked);
+});
+
+buildingToggle.addEventListener('change', (event) => {
+  appState.setBuildingsEnabled(event.target.checked);
+});
+
+buildingSourceButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    if (button.disabled) {
+      return;
+    }
+
+    appState.setBuildingSource(button.dataset.buildingSource);
+    appState.setBuildingsEnabled(true);
+  });
 });
 
 const syncMapSettingsToggleState = (collapsed) => {
@@ -84,9 +107,39 @@ routingPanelToggle.addEventListener('click', () => {
   routingPanelToggle.setAttribute('title', nextCollapsed ? 'Panel erweitern' : 'Panel minimieren');
 });
 
+const updateBuildingSourceStatus = () => {
+  if (!buildingSourceStatus) {
+    return;
+  }
+
+  const buildingsSupported = BUILDING_SUPPORTED_BASEMAPS.has(latestUiState.basemap);
+  if (!latestUiState.buildingsEnabled) {
+    buildingSourceStatus.hidden = true;
+    return;
+  }
+
+  if (!buildingsSupported) {
+    buildingSourceStatus.hidden = false;
+    buildingSourceStatus.textContent = 'Mit dieser Karte nicht verfuegbar.';
+    return;
+  }
+
+  if (mapApi.map.getZoom() >= 14) {
+    buildingSourceStatus.hidden = true;
+    return;
+  }
+
+  buildingSourceStatus.hidden = false;
+  buildingSourceStatus.textContent = 'Ab Zoom 14 sichtbar.';
+};
+
 syncMapSettingsToggleState(mapSettingsPanel.classList.contains('is-collapsed'));
+updateBuildingSourceStatus();
+
+mapApi.map.on('zoom', updateBuildingSourceStatus);
 
 appState.subscribe((state) => {
+  latestUiState = state;
   if (routingNote) {
     const showRoutingNote = !state.startPoint && !state.endPoint && !state.profileData && !state.isLoading && !state.error;
     routingNote.hidden = !showRoutingNote;
@@ -129,6 +182,13 @@ appState.subscribe((state) => {
 
   terrainToggle.checked = state.terrainEnabled;
   hillshadeToggle.checked = state.hillshadeEnabled;
+  buildingToggle.checked = state.buildingsEnabled;
+
+  buildingSourceButtons.forEach((button) => {
+    button.classList.toggle('selected', button.dataset.buildingSource === state.buildingSource);
+  });
+
+  updateBuildingSourceStatus();
 });
 
 function showEliBasemapMenu(localImagery, clientX, clientY) {

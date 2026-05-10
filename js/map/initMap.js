@@ -1,6 +1,9 @@
 import { applySelection, removeWaypointSelection, toPoint, updateWaypointSelection } from './pointSelection.js';
 import { showWaypointContextMenu } from '../ui/waypointContextMenu.js';
 import { createEliBasemapController } from './eliBasemapController.js';
+import { createBuildingLayerController } from './buildingLayerController.js';
+import { createCustomLineLayer } from './customLineLayer.js';
+import { projectLngLatToScreen } from './screenProjection.js';
 
 const BASEMAPS = {
   positron: {
@@ -61,19 +64,69 @@ const SKY_STYLES = {
 
 const SKY_SYNC_TIMEOUT_KEY = '__hiloSkySyncTimeout';
 const SKY_SYNC_STATE_KEY = '__hiloSkySyncState';
+const SKY_APPLIED_STATE_KEY = '__hiloSkyAppliedState';
 const STYLE_SWITCH_PENDING_KEY = '__hiloStyleSwitchPending';
+const STYLE_REHYDRATE_TIMEOUT_KEY = '__hiloStyleRehydrateTimeout';
+const TERRAIN_SOURCE_MAXZOOM = 18;
+const CUSTOM_RUNTIME_LAYER_IDS = new Set([
+  'osm-carto-layer',
+  'esri-imagery-layer',
+  'eli-local-imagery-layer',
+  'hilo-3d-buildings',
+  'selection-line-overlay',
+  'hillshade-layer',
+]);
 
-function buildFeatureCollection(features = []) {
+function getDirectLineKey(directLine) {
+  if (!directLine?.coordinates?.length) {
+    return '';
+  }
+
+  return directLine.coordinates.map((coordinate) => coordinate.join(',')).join('|');
+}
+
+// Pre-parsed RGB tuples — passed by reference into segmentColors so the
+// custom line layer never has to reparse hex strings in its render loop.
+const ROUTE_COLOR_DEFAULT_RGB = Object.freeze([0x14 / 255, 0x5e / 255, 0x4b / 255]);
+const ROUTE_COLOR_BUILDING_RGB = Object.freeze([0xd9 / 255, 0x77 / 255, 0x06 / 255]);
+
+function buildRouteOverlayData(state) {
+  const directLineCoords = state.directLine?.coordinates;
+  if (!Array.isArray(directLineCoords) || directLineCoords.length < 2) {
+    return null;
+  }
+
+  const samples = state.profileData?.samples;
+  if (!Array.isArray(samples) || samples.length < 2) {
+    // No profile yet — fall back to the sparse directLine. Default color, no
+    // segment-color overrides.
+    return {
+      vertices: directLineCoords,
+      segmentColors: null,
+    };
+  }
+
+  const offsets = state.profileData.buildingOffsets || [];
+  const vertices = new Array(samples.length);
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index];
+    vertices[index] = [sample.lng, sample.lat];
+  }
+  const segmentColors = new Array(samples.length - 1);
+  for (let index = 0; index < samples.length - 1; index += 1) {
+    const overBuilding = (offsets[index] > 0) || (offsets[index + 1] > 0);
+    segmentColors[index] = overBuilding ? ROUTE_COLOR_BUILDING_RGB : ROUTE_COLOR_DEFAULT_RGB;
+  }
+
   return {
-    type: 'FeatureCollection',
-    features,
+    vertices,
+    segmentColors,
   };
 }
 
 export function initMap(appState) {
   let latestState = appState.getState();
   let lastBasemap = latestState.basemap;
-  let lineHoverRegistered = false;
   let markerState = {
     start: null,
     end: null,
@@ -91,9 +144,36 @@ export function initMap(appState) {
     maxZoom: 18,
     maxPitch: 80,
   });
-  const eliBasemapController = createEliBasemapController(map, appState);
+  let buildingLayerController;
+  const eliBasemapController = createEliBasemapController(map, appState, {
+    onRasterLayerVisibilityChange: () => {
+      applyHostStyleLayerVisibility(map, latestState);
+      buildingLayerController?.applyForState(latestState);
+    },
+  });
+  buildingLayerController = createBuildingLayerController(map, appState);
 
-  map.addControl(new maplibregl.NavigationControl(), 'bottom-left');
+  const routeLineOverlay = createCustomLineLayer({
+    id: 'selection-line-overlay',
+    defaultColor: '#145e4b',
+    widthPixels: 4,
+    opacity: 0.95,
+  });
+
+  const ensureCustomLineOverlays = () => {
+    if (!map.getStyle()) {
+      return;
+    }
+    if (!map.getLayer(routeLineOverlay.id)) {
+      map.addLayer(routeLineOverlay);
+    }
+  };
+
+  const refreshCustomLineOverlays = (state) => {
+    routeLineOverlay.setData(buildRouteOverlayData(state));
+  };
+
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-left');
   registerMissingStyleImageFallbacks(map);
 
   let hoverMarker = null;
@@ -111,39 +191,35 @@ export function initMap(appState) {
   });
 
   map.on('style.load', () => {
+    map[SKY_APPLIED_STATE_KEY] = null;
     const skyDelay = map[STYLE_SWITCH_PENDING_KEY] ? 300 : 0;
-    ensureMapArtifacts(map, latestState);
-    restoreMapVisualState(map, latestState, { skyDelay });
+    hydrateStyleState(map, latestState, eliBasemapController, buildingLayerController, { skyDelay });
     map[STYLE_SWITCH_PENDING_KEY] = false;
-    eliBasemapController.onStyleLoaded();
-    if (!lineHoverRegistered && map.getLayer('selection-line-hit')) {
-      registerLineHoverHandlers(map, appState);
-      lineHoverRegistered = true;
-    }
+    ensureCustomLineOverlays();
+    refreshCustomLineOverlays(latestState);
+    scheduleStyleRehydrateRetry(map, latestState, eliBasemapController, buildingLayerController);
   });
 
+  registerLineHoverHandlers(map, appState);
+
   appState.subscribe((state) => {
+    const previousState = latestState;
     const basemapChanged = state.basemap !== lastBasemap;
+    const directLineChanged = getDirectLineKey(state.directLine) !== getDirectLineKey(previousState.directLine);
+    const visualStateChanged = basemapChanged
+      || state.terrainEnabled !== previousState.terrainEnabled
+      || state.hillshadeEnabled !== previousState.hillshadeEnabled;
+    const localImagerySelectionChanged = basemapChanged || state.localImagery?.selectedId !== previousState.localImagery?.selectedId;
+    const buildingStateChanged = basemapChanged
+      || state.terrainEnabled !== previousState.terrainEnabled
+      || state.buildingsEnabled !== previousState.buildingsEnabled
+      || state.buildingSource !== previousState.buildingSource;
+    const profileDataChanged = state.profileData !== previousState.profileData;
     latestState = state;
     eliBasemapController.updateState(state);
-    const source = map.getSource('selection-line');
-    if (source) {
-      source.setData(
-        buildFeatureCollection(
-          state.directLine
-            ? [
-                {
-                  type: 'Feature',
-                  geometry: {
-                    type: 'LineString',
-                    coordinates: state.directLine.coordinates,
-                  },
-                  properties: {},
-                },
-              ]
-            : []
-        )
-      );
+
+    if (directLineChanged || profileDataChanged) {
+      refreshCustomLineOverlays(state);
     }
 
     markerState = syncPointMarkers(map, markerState, state, appState);
@@ -156,10 +232,18 @@ export function initMap(appState) {
       clearScheduledSkyState(map);
       map[STYLE_SWITCH_PENDING_KEY] = true;
       eliBasemapController.prepareForStyleChange();
+      buildingLayerController.prepareForStyleChange();
       map.setStyle(BASEMAPS[state.basemap].style, { diff: false });
     } else {
-      restoreMapVisualState(map, state);
-      eliBasemapController.applyForState(state);
+      if (visualStateChanged) {
+        restoreMapVisualState(map, state);
+      }
+      if (localImagerySelectionChanged) {
+        eliBasemapController.applyForState(state);
+      }
+      if (buildingStateChanged) {
+        buildingLayerController.applyForState(state);
+      }
     }
 
     lastBasemap = state.basemap;
@@ -168,6 +252,38 @@ export function initMap(appState) {
   });
 
   return { map };
+}
+
+function hydrateStyleState(map, state, eliBasemapController, buildingLayerController, options = {}) {
+  ensureMapArtifacts(map, state);
+  restoreMapVisualState(map, state, options);
+  eliBasemapController.onStyleLoaded();
+  eliBasemapController.applyForState(state);
+  buildingLayerController.onStyleLoaded();
+  buildingLayerController.applyForState(state);
+}
+
+function scheduleStyleRehydrateRetry(map, state, eliBasemapController, buildingLayerController) {
+  clearStyleRehydrateRetry(map);
+
+  const retryHydration = () => {
+    if (!map.getStyle()) {
+      return;
+    }
+
+    hydrateStyleState(map, state, eliBasemapController, buildingLayerController);
+    map[STYLE_REHYDRATE_TIMEOUT_KEY] = null;
+  };
+
+  map.once('idle', retryHydration);
+  map[STYLE_REHYDRATE_TIMEOUT_KEY] = setTimeout(retryHydration, 700);
+}
+
+function clearStyleRehydrateRetry(map) {
+  if (map[STYLE_REHYDRATE_TIMEOUT_KEY]) {
+    clearTimeout(map[STYLE_REHYDRATE_TIMEOUT_KEY]);
+    map[STYLE_REHYDRATE_TIMEOUT_KEY] = null;
+  }
 }
 
 function registerMissingStyleImageFallbacks(map) {
@@ -225,18 +341,12 @@ function createPointMarker(point, kind, onDragEnd, label = '') {
 }
 
 function ensureMapArtifacts(map, state) {
-  if (!map.getSource('selection-line')) {
-    map.addSource('selection-line', {
-      type: 'geojson',
-      data: buildFeatureCollection(),
-    });
-  }
-
   if (!map.getSource('terrain-dem')) {
     map.addSource('terrain-dem', {
       type: 'raster-dem',
       url: 'https://tiles.mapterhorn.com/tilejson.json',
       tileSize: 512,
+      maxzoom: TERRAIN_SOURCE_MAXZOOM,
       encoding: 'terrarium',
       attribution: '© Mapterhorn',
     });
@@ -247,6 +357,7 @@ function ensureMapArtifacts(map, state) {
       type: 'raster-dem',
       url: 'https://tiles.mapterhorn.com/tilejson.json',
       tileSize: 512,
+      maxzoom: TERRAIN_SOURCE_MAXZOOM,
       encoding: 'terrarium',
       attribution: '© Mapterhorn',
     });
@@ -254,75 +365,44 @@ function ensureMapArtifacts(map, state) {
 
   ensureRasterBasemapLayers(map);
 
-  if (!map.getLayer('selection-line')) {
-    map.addLayer({
-      id: 'selection-line',
-      type: 'line',
-      source: 'selection-line',
-      paint: {
-        'line-color': '#145e4b',
-        'line-width': 4,
-        'line-opacity': 0.88,
-      },
-    });
-  }
-
   if (!map.getLayer('hillshade-layer')) {
-    map.addLayer(
-      {
-        id: 'hillshade-layer',
-        type: 'hillshade',
-        source: 'hillshade-dem',
-        layout: {
-          visibility: state.hillshadeEnabled ? 'visible' : 'none',
-        },
-        paint: {
-          'hillshade-exaggeration': 0.35,
-          'hillshade-illumination-anchor': 'map',
-        },
-      },
-      'selection-line'
-    );
-  }
-
-  if (!map.getLayer('selection-line-hit')) {
     map.addLayer({
-      id: 'selection-line-hit',
-      type: 'line',
-      source: 'selection-line',
+      id: 'hillshade-layer',
+      type: 'hillshade',
+      source: 'hillshade-dem',
+      layout: {
+        visibility: state.hillshadeEnabled ? 'visible' : 'none',
+      },
       paint: {
-        'line-color': '#000000',
-        'line-opacity': 0.01,
-        'line-width': 18,
+        'hillshade-exaggeration': 0.35,
+        'hillshade-illumination-anchor': 'map',
       },
     });
-  }
-
-  const refreshedSource = map.getSource('selection-line');
-  if (refreshedSource) {
-    refreshedSource.setData(
-      buildFeatureCollection(
-        state.directLine
-          ? [
-              {
-                type: 'Feature',
-                geometry: {
-                  type: 'LineString',
-                  coordinates: state.directLine.coordinates,
-                },
-                properties: {},
-              },
-            ]
-          : []
-      )
-    );
   }
 
 }
 
 function restoreMapVisualState(map, state, options = {}) {
   applyDisplayedBasemap(map, state);
+  applyHostStyleLayerVisibility(map, state);
   applyTerrainState(map, state, options);
+}
+
+function applyHostStyleLayerVisibility(map, state) {
+  const style = map.getStyle();
+  if (!style?.layers?.length) {
+    return;
+  }
+
+  const hideHostStyleLayers = state.basemap === 'eli-local' && Boolean(map.getLayer('eli-local-imagery-layer'));
+
+  style.layers.forEach((layer) => {
+    if (CUSTOM_RUNTIME_LAYER_IDS.has(layer.id)) {
+      return;
+    }
+
+    map.setLayoutProperty(layer.id, 'visibility', hideHostStyleLayers ? 'none' : 'visible');
+  });
 }
 
 function applyTerrainState(map, state, options = {}) {
@@ -333,9 +413,9 @@ function applyTerrainState(map, state, options = {}) {
   if (map.getSource('terrain-dem')) {
     map.setTerrain(state.terrainEnabled ? { source: 'terrain-dem', exaggeration: 1 } : null);
 
-    if (state.terrainEnabled && map.getPitch() < 50) {
+    if (state.terrainEnabled && map.getPitch() < 50 && !map.isMoving()) {
       map.easeTo({ pitch: 60, duration: 700 });
-    } else if (!state.terrainEnabled && map.getPitch() > 60) {
+    } else if (!state.terrainEnabled && map.getPitch() > 60 && !map.isMoving()) {
       map.easeTo({ pitch: 0, duration: 500 });
     }
   }
@@ -373,15 +453,20 @@ function scheduleSkyState(map, state, delay = 0) {
     }
 
     map[SKY_SYNC_TIMEOUT_KEY] = null;
+    if (pendingState !== map[SKY_SYNC_STATE_KEY]) {
+      return;
+    }
+
+    const nextAppliedSkyState = pendingState.terrainEnabled ? pendingState.basemap : 'off';
+    if (map[SKY_APPLIED_STATE_KEY] === nextAppliedSkyState) {
+      return;
+    }
+
+    map[SKY_APPLIED_STATE_KEY] = nextAppliedSkyState;
     map.setSky(pendingState.terrainEnabled ? getSkyStyleForBasemap(pendingState.basemap) : undefined);
   };
 
-  if (delay > 0) {
-    map[SKY_SYNC_TIMEOUT_KEY] = setTimeout(tryApplySky, delay);
-    return;
-  }
-
-  tryApplySky();
+  map[SKY_SYNC_TIMEOUT_KEY] = setTimeout(tryApplySky, Math.max(0, delay));
 }
 
 function clearScheduledSkyState(map) {
@@ -510,22 +595,6 @@ function syncPointMarkers(map, markerState, state, appState) {
 
   return markerState;
 }
-function findNearestSampleIndex(samples, lngLat) {
-  let nearestIndex = 0;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-
-  samples.forEach((sample, index) => {
-    const deltaLng = sample.lng - lngLat.lng;
-    const deltaLat = sample.lat - lngLat.lat;
-    const distance = deltaLng * deltaLng + deltaLat * deltaLat;
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearestIndex = index;
-    }
-  });
-
-  return nearestIndex;
-}
 
 function ensureRasterBasemapLayers(map) {
   Object.values(BASEMAPS).forEach((config) => {
@@ -555,22 +624,68 @@ function ensureRasterBasemapLayers(map) {
   });
 }
 
+// Pixel radius around the route line that still counts as "hovering it".
+// Generous cushion makes it easy to grab the line on touchpads / trackballs.
+const LINE_HOVER_THRESHOLD_PX = 50;
+
 function registerLineHoverHandlers(map, appState) {
-  map.on('mouseenter', 'selection-line-hit', () => {
-    map.getCanvas().style.cursor = 'pointer';
-  });
+  const setHoverState = (sampleIndex) => {
+    const currentIndex = appState.getState().hoverSampleIndex;
+    if (currentIndex === sampleIndex) {
+      return;
+    }
+    map.getCanvas().style.cursor = sampleIndex === null ? '' : 'pointer';
+    appState.setHoverSampleIndex(sampleIndex);
+  };
 
-  map.on('mouseleave', 'selection-line-hit', () => {
-    map.getCanvas().style.cursor = '';
-    appState.setHoverSampleIndex(null);
-  });
-
-  map.on('mousemove', 'selection-line-hit', (event) => {
-    const state = appState.getState();
-    if (!state.profileData?.samples?.length) {
+  map.on('mousemove', (event) => {
+    const samples = appState.getState().profileData?.samples;
+    if (!samples?.length) {
+      setHoverState(null);
       return;
     }
 
-    appState.setHoverSampleIndex(findNearestSampleIndex(state.profileData.samples, event.lngLat));
+    const nearest = findNearestSampleScreenSpace(
+      samples,
+      map,
+      event.point.x,
+      event.point.y,
+      LINE_HOVER_THRESHOLD_PX
+    );
+    setHoverState(nearest);
   });
+
+  map.on('mouseout', () => {
+    setHoverState(null);
+  });
+}
+
+// Hit-tests against the same screen-space projection the custom line layer
+// uses to render — so the clickable region always matches the visible line,
+// even with terrain enabled or a steep pitch.
+function findNearestSampleScreenSpace(samples, map, cursorX, cursorY, maxPixelDistance) {
+  const maxDistanceSq = maxPixelDistance * maxPixelDistance;
+  let nearestIndex = null;
+  let nearestDistanceSq = maxDistanceSq;
+  const lngLatScratch = { lng: 0, lat: 0 };
+  const projected = { x: 0, y: 0, valid: false };
+
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index];
+    lngLatScratch.lng = sample.lng;
+    lngLatScratch.lat = sample.lat;
+    projectLngLatToScreen(map, lngLatScratch, projected);
+    if (!projected.valid) {
+      continue;
+    }
+    const dx = projected.x - cursorX;
+    const dy = projected.y - cursorY;
+    const distanceSq = dx * dx + dy * dy;
+    if (distanceSq < nearestDistanceSq) {
+      nearestDistanceSq = distanceSq;
+      nearestIndex = index;
+    }
+  }
+
+  return nearestIndex;
 }

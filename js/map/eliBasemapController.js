@@ -8,7 +8,7 @@ const ELI_ERROR_REASONS = {
   network: 'Quelle konnte nicht geladen werden.',
 };
 
-export function createEliBasemapController(map, appState) {
+export function createEliBasemapController(map, appState, options = {}) {
   let imageryFeatures = [];
   let availableFeatures = [];
   let activeFeatureId = '';
@@ -16,6 +16,9 @@ export function createEliBasemapController(map, appState) {
   let ready = false;
   let styleTransitionPending = false;
   const failedFeatureIds = new Set();
+  const notifyRasterLayerVisibilityChange = () => {
+    options.onRasterLayerVisibilityChange?.();
+  };
 
   const resolveActiveFeature = (selectedId) => {
     const viableFeatures = availableFeatures.filter((feature) => !failedFeatureIds.has(getFeatureId(feature)) && !feature.unsupportedReason);
@@ -110,6 +113,7 @@ export function createEliBasemapController(map, appState) {
     const nextFeatureId = feature.properties?.id || feature.properties?.name || '';
     if (nextFeatureId === activeFeatureId && map.getLayer(ELI_LAYER_ID) && map.getSource(ELI_SOURCE_ID)) {
       ensureVisible();
+      notifyRasterLayerVisibilityChange();
       return;
     }
 
@@ -138,6 +142,7 @@ export function createEliBasemapController(map, appState) {
       },
     }, map.getLayer('hillshade-layer') ? 'hillshade-layer' : 'selection-line');
     activeFeatureId = nextFeatureId;
+    notifyRasterLayerVisibilityChange();
   };
 
   const ensureVisible = () => {
@@ -149,6 +154,7 @@ export function createEliBasemapController(map, appState) {
   const clearBasemap = () => {
     if (!map.getStyle()) {
       activeFeatureId = '';
+      notifyRasterLayerVisibilityChange();
       return;
     }
 
@@ -159,6 +165,7 @@ export function createEliBasemapController(map, appState) {
       map.removeSource(ELI_SOURCE_ID);
     }
     activeFeatureId = '';
+    notifyRasterLayerVisibilityChange();
   };
 
   return {

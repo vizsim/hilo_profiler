@@ -1,4 +1,4 @@
-import { renderHeightgraph } from './heightgraph.js?v=20260504c';
+import { renderHeightgraph } from './heightgraph.js?v=20260510a';
 
 export function setupProfileView(appState) {
   let lastState = appState.getState();
