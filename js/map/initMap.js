@@ -62,8 +62,10 @@ const SKY_STYLES = {
 
 const SKY_SYNC_TIMEOUT_KEY = '__hiloSkySyncTimeout';
 const SKY_SYNC_STATE_KEY = '__hiloSkySyncState';
+const SKY_APPLIED_STATE_KEY = '__hiloSkyAppliedState';
 const STYLE_SWITCH_PENDING_KEY = '__hiloStyleSwitchPending';
 const STYLE_REHYDRATE_TIMEOUT_KEY = '__hiloStyleRehydrateTimeout';
+const TERRAIN_SOURCE_MAXZOOM = 18;
 const CUSTOM_RUNTIME_LAYER_IDS = new Set([
   'osm-carto-layer',
   'esri-imagery-layer',
@@ -79,6 +81,14 @@ function buildFeatureCollection(features = []) {
     type: 'FeatureCollection',
     features,
   };
+}
+
+function getDirectLineKey(directLine) {
+  if (!directLine?.coordinates?.length) {
+    return '';
+  }
+
+  return directLine.coordinates.map((coordinate) => coordinate.join(',')).join('|');
 }
 
 export function initMap(appState) {
@@ -129,6 +139,7 @@ export function initMap(appState) {
   });
 
   map.on('style.load', () => {
+    map[SKY_APPLIED_STATE_KEY] = null;
     const skyDelay = map[STYLE_SWITCH_PENDING_KEY] ? 300 : 0;
     hydrateStyleState(map, latestState, eliBasemapController, buildingLayerController, { skyDelay });
     map[STYLE_SWITCH_PENDING_KEY] = false;
@@ -140,11 +151,21 @@ export function initMap(appState) {
   });
 
   appState.subscribe((state) => {
+    const previousState = latestState;
     const basemapChanged = state.basemap !== lastBasemap;
+    const directLineChanged = getDirectLineKey(state.directLine) !== getDirectLineKey(previousState.directLine);
+    const visualStateChanged = basemapChanged
+      || state.terrainEnabled !== previousState.terrainEnabled
+      || state.hillshadeEnabled !== previousState.hillshadeEnabled;
+    const localImagerySelectionChanged = basemapChanged || state.localImagery?.selectedId !== previousState.localImagery?.selectedId;
+    const buildingStateChanged = basemapChanged
+      || state.terrainEnabled !== previousState.terrainEnabled
+      || state.buildingsEnabled !== previousState.buildingsEnabled
+      || state.buildingSource !== previousState.buildingSource;
     latestState = state;
     eliBasemapController.updateState(state);
     const source = map.getSource('selection-line');
-    if (source) {
+    if (source && directLineChanged) {
       source.setData(
         buildFeatureCollection(
           state.directLine
@@ -176,9 +197,15 @@ export function initMap(appState) {
       buildingLayerController.prepareForStyleChange();
       map.setStyle(BASEMAPS[state.basemap].style, { diff: false });
     } else {
-      restoreMapVisualState(map, state);
-      eliBasemapController.applyForState(state);
-      buildingLayerController.applyForState(state);
+      if (visualStateChanged) {
+        restoreMapVisualState(map, state);
+      }
+      if (localImagerySelectionChanged) {
+        eliBasemapController.applyForState(state);
+      }
+      if (buildingStateChanged) {
+        buildingLayerController.applyForState(state);
+      }
     }
 
     lastBasemap = state.basemap;
@@ -288,6 +315,7 @@ function ensureMapArtifacts(map, state) {
       type: 'raster-dem',
       url: 'https://tiles.mapterhorn.com/tilejson.json',
       tileSize: 512,
+      maxzoom: TERRAIN_SOURCE_MAXZOOM,
       encoding: 'terrarium',
       attribution: '© Mapterhorn',
     });
@@ -298,6 +326,7 @@ function ensureMapArtifacts(map, state) {
       type: 'raster-dem',
       url: 'https://tiles.mapterhorn.com/tilejson.json',
       tileSize: 512,
+      maxzoom: TERRAIN_SOURCE_MAXZOOM,
       encoding: 'terrarium',
       attribution: '© Mapterhorn',
     });
@@ -402,9 +431,9 @@ function applyTerrainState(map, state, options = {}) {
   if (map.getSource('terrain-dem')) {
     map.setTerrain(state.terrainEnabled ? { source: 'terrain-dem', exaggeration: 1 } : null);
 
-    if (state.terrainEnabled && map.getPitch() < 50) {
+    if (state.terrainEnabled && map.getPitch() < 50 && !map.isMoving()) {
       map.easeTo({ pitch: 60, duration: 700 });
-    } else if (!state.terrainEnabled && map.getPitch() > 60) {
+    } else if (!state.terrainEnabled && map.getPitch() > 60 && !map.isMoving()) {
       map.easeTo({ pitch: 0, duration: 500 });
     }
   }
@@ -442,15 +471,20 @@ function scheduleSkyState(map, state, delay = 0) {
     }
 
     map[SKY_SYNC_TIMEOUT_KEY] = null;
+    if (pendingState !== map[SKY_SYNC_STATE_KEY]) {
+      return;
+    }
+
+    const nextAppliedSkyState = pendingState.terrainEnabled ? pendingState.basemap : 'off';
+    if (map[SKY_APPLIED_STATE_KEY] === nextAppliedSkyState) {
+      return;
+    }
+
+    map[SKY_APPLIED_STATE_KEY] = nextAppliedSkyState;
     map.setSky(pendingState.terrainEnabled ? getSkyStyleForBasemap(pendingState.basemap) : undefined);
   };
 
-  if (delay > 0) {
-    map[SKY_SYNC_TIMEOUT_KEY] = setTimeout(tryApplySky, delay);
-    return;
-  }
-
-  tryApplySky();
+  map[SKY_SYNC_TIMEOUT_KEY] = setTimeout(tryApplySky, Math.max(0, delay));
 }
 
 function clearScheduledSkyState(map) {

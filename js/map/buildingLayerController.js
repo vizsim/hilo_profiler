@@ -3,6 +3,7 @@ const BUILDING_LAYER_ID = 'hilo-3d-buildings';
 const BUILDING_VECTOR_SOURCE_URL = 'https://tiles.openfreemap.org/planet';
 const DEFAULT_BUILDING_OPACITY = 0.8;
 const DEFAULT_BUILDING_COLOR = 'hsl(35, 8%, 85%)';
+const DEFAULT_BUILDING_HEIGHT = 12;
 const BUILDING_OPACITY_BY_BASEMAP = {
   'eli-local': 0.8,
 };
@@ -22,14 +23,24 @@ const BUILDING_SOURCES = {
       minzoom: 14,
       paint: {
         'fill-extrusion-color': DEFAULT_BUILDING_COLOR,
-        'fill-extrusion-height': {
-          property: 'render_height',
-          type: 'identity',
-        },
-        'fill-extrusion-base': {
-          property: 'render_min_height',
-          type: 'identity',
-        },
+        'fill-extrusion-height': [
+          'max',
+          [
+            'coalesce',
+            ['to-number', ['get', 'render_height']],
+            DEFAULT_BUILDING_HEIGHT,
+          ],
+          [
+            'coalesce',
+            ['to-number', ['get', 'render_min_height']],
+            0,
+          ],
+        ],
+        'fill-extrusion-base': [
+          'coalesce',
+          ['to-number', ['get', 'render_min_height']],
+          0,
+        ],
         'fill-extrusion-opacity': DEFAULT_BUILDING_OPACITY,
       },
     },

@@ -28,6 +28,8 @@ const initialState = {
   error: null,
 };
 
+const UNCHANGED = Symbol('unchanged');
+
 function cloneState(state) {
   return {
     ...state,
@@ -77,6 +79,45 @@ function formatStatus(state) {
   return 'Linie bereit';
 }
 
+function areLocalImageryStatesEqual(left, right) {
+  if (left === right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  if (
+    left.loading !== right.loading
+    || left.availableCount !== right.availableCount
+    || left.isAvailable !== right.isAvailable
+    || left.selectedId !== right.selectedId
+    || left.name !== right.name
+    || left.details !== right.details
+    || left.attribution !== right.attribution
+    || left.licenseUrl !== right.licenseUrl
+  ) {
+    return false;
+  }
+
+  const leftChoices = left.choices || [];
+  const rightChoices = right.choices || [];
+  if (leftChoices.length !== rightChoices.length) {
+    return false;
+  }
+
+  return leftChoices.every((choice, index) => {
+    const nextChoice = rightChoices[index];
+    return nextChoice
+      && choice.id === nextChoice.id
+      && choice.name === nextChoice.name
+      && choice.details === nextChoice.details
+      && choice.failed === nextChoice.failed
+      && choice.unavailableReason === nextChoice.unavailableReason;
+  });
+}
+
 export function createAppState() {
   let state = cloneState(initialState);
   const listeners = new Set();
@@ -87,7 +128,12 @@ export function createAppState() {
   };
 
   const update = (updater) => {
-    state = updater(cloneState(state));
+    const nextState = updater(cloneState(state));
+    if (nextState === UNCHANGED) {
+      return;
+    }
+
+    state = nextState;
     state.status = formatStatus(state);
     notify();
   };
@@ -108,31 +154,45 @@ export function createAppState() {
       }));
     },
     setLocalImageryStatus(localImagery) {
-      update((currentState) => ({
-        ...currentState,
-        localImagery: {
+      update((currentState) => {
+        const nextLocalImagery = {
           ...currentState.localImagery,
           ...localImagery,
-        },
-      }));
+        };
+
+        if (areLocalImageryStatesEqual(currentState.localImagery, nextLocalImagery)) {
+          return UNCHANGED;
+        }
+
+        return {
+          ...currentState,
+          localImagery: nextLocalImagery,
+        };
+      });
     },
     setLocalImagerySelection(selectedId) {
       const currentChoice = state.localImagery?.choices?.find((choice) => choice.id === selectedId);
 
-      update((currentState) => ({
-        ...currentState,
-        localImagery: {
-          ...currentState.localImagery,
-          selectedId,
-          ...(currentChoice
-            ? {
-                isAvailable: true,
-                name: currentChoice.name,
-                details: currentChoice.details,
-              }
-            : {}),
-        },
-      }));
+      update((currentState) => {
+        if (currentState.localImagery?.selectedId === selectedId) {
+          return UNCHANGED;
+        }
+
+        return {
+          ...currentState,
+          localImagery: {
+            ...currentState.localImagery,
+            selectedId,
+            ...(currentChoice
+              ? {
+                  isAvailable: true,
+                  name: currentChoice.name,
+                  details: currentChoice.details,
+                }
+              : {}),
+          },
+        };
+      });
     },
     setTerrainEnabled(terrainEnabled) {
       update((currentState) => ({
@@ -208,7 +268,7 @@ export function createAppState() {
     setHoverSampleIndex(hoverSampleIndex) {
       update((currentState) => {
         if (currentState.hoverSampleIndex === hoverSampleIndex) {
-          return currentState;
+          return UNCHANGED;
         }
 
         return {
