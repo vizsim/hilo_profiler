@@ -35,10 +35,11 @@ Skala
 - **Problem**: `notify()` ruft `cloneState()` einmal **pro Subscriber** auf — bei profileData mit 320 Samples + Elevations + buildingOffsets sind das hunderte Sub-Allokationen pro Notify. Hover-Bewegung auf der Karte triggert das voll, mit ~4 Subscribern.
 - **Fix**: Snapshot einmal pro Notify klonen und an alle Listener weiterreichen, oder in den Listener-Pfaden Immutability per Konvention annehmen und Klonen nur bei `getState()` machen.
 
-### 5. [high | M] Heightgraph macht Full-Repaint bei jedem Hover-Tick
-- [ ] **Wo**: [js/profile/profileView.js:8-13](js/profile/profileView.js#L8-L13), [js/profile/heightgraph.js:21-82](js/profile/heightgraph.js#L21-L82)
-- **Problem**: Jedes State-Update inklusive Hover ruft `renderHeightgraph()` auf, was `canvas.width = ...` setzt (clear + Bitmap-Reset) und Background/Grid/Areas/Lines/Buildings/Hover komplett neu zeichnet.
-- **Fix**: Profil einmal in einen Offscreen-Canvas vorrendern, im Live-Canvas nur den Hover-Layer drüberlegen. Oder zumindest `clearRect` statt `width = ...` (letzteres ist der teuerste Schritt).
+### 5. [high | M] Heightgraph macht Full-Repaint bei jedem Hover-Tick ✅
+
+- [x] **Wo**: [js/profile/heightgraph.js](js/profile/heightgraph.js)
+- **Problem**: Jedes State-Update inklusive Hover rief `renderHeightgraph()` auf, was `canvas.width = ...` setzte (Bitmap-Reset) und Background/Grid/Areas/Lines/Buildings/Hover komplett neu zeichnete.
+- **Fix**: Statisches Profil-Layer wird einmal in einen Offscreen-Canvas vorgerendert; auf jedem Hover-Tick wird nur dieser Cache via `drawImage` in den Live-Canvas geblittet und der Hover-Indicator drüber gezeichnet. Cache-Invalidation über einen Fingerprint (Sample-Count + Stats + Größe + DPR). `canvas.width = ...` wird nur noch gesetzt, wenn die Bitmap-Größe sich tatsächlich ändert. `getHoverIndex` nutzt die gecachten Achsen, wenn der Fingerprint passt — kein nochmaliger min/max/niceStep auf jedem mousemove.
 
 ---
 
