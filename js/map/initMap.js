@@ -63,6 +63,7 @@ const SKY_STYLES = {
 const SKY_SYNC_TIMEOUT_KEY = '__hiloSkySyncTimeout';
 const SKY_SYNC_STATE_KEY = '__hiloSkySyncState';
 const STYLE_SWITCH_PENDING_KEY = '__hiloStyleSwitchPending';
+const STYLE_REHYDRATE_TIMEOUT_KEY = '__hiloStyleRehydrateTimeout';
 
 function buildFeatureCollection(features = []) {
   return {
@@ -114,15 +115,13 @@ export function initMap(appState) {
 
   map.on('style.load', () => {
     const skyDelay = map[STYLE_SWITCH_PENDING_KEY] ? 300 : 0;
-    ensureMapArtifacts(map, latestState);
-    restoreMapVisualState(map, latestState, { skyDelay });
+    hydrateStyleState(map, latestState, eliBasemapController, buildingLayerController, { skyDelay });
     map[STYLE_SWITCH_PENDING_KEY] = false;
-    eliBasemapController.onStyleLoaded();
-    buildingLayerController.onStyleLoaded();
     if (!lineHoverRegistered && map.getLayer('selection-line-hit')) {
       registerLineHoverHandlers(map, appState);
       lineHoverRegistered = true;
     }
+    scheduleStyleRehydrateRetry(map, latestState, eliBasemapController, buildingLayerController);
   });
 
   appState.subscribe((state) => {
@@ -173,6 +172,38 @@ export function initMap(appState) {
   });
 
   return { map };
+}
+
+function hydrateStyleState(map, state, eliBasemapController, buildingLayerController, options = {}) {
+  ensureMapArtifacts(map, state);
+  restoreMapVisualState(map, state, options);
+  eliBasemapController.onStyleLoaded();
+  eliBasemapController.applyForState(state);
+  buildingLayerController.onStyleLoaded();
+  buildingLayerController.applyForState(state);
+}
+
+function scheduleStyleRehydrateRetry(map, state, eliBasemapController, buildingLayerController) {
+  clearStyleRehydrateRetry(map);
+
+  const retryHydration = () => {
+    if (!map.getStyle()) {
+      return;
+    }
+
+    hydrateStyleState(map, state, eliBasemapController, buildingLayerController);
+    map[STYLE_REHYDRATE_TIMEOUT_KEY] = null;
+  };
+
+  map.once('idle', retryHydration);
+  map[STYLE_REHYDRATE_TIMEOUT_KEY] = setTimeout(retryHydration, 700);
+}
+
+function clearStyleRehydrateRetry(map) {
+  if (map[STYLE_REHYDRATE_TIMEOUT_KEY]) {
+    clearTimeout(map[STYLE_REHYDRATE_TIMEOUT_KEY]);
+    map[STYLE_REHYDRATE_TIMEOUT_KEY] = null;
+  }
 }
 
 function registerMissingStyleImageFallbacks(map) {
