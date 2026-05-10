@@ -1,9 +1,11 @@
+const BUILDING_SOURCE_ID = 'hilo-buildings-source';
 const BUILDING_LAYER_ID = 'hilo-3d-buildings';
+const BUILDING_VECTOR_SOURCE_URL = 'https://tiles.openfreemap.org/planet';
 const BUILDING_SOURCES = {
   osm: {
-    supportedBasemaps: ['positron', 'dark'],
+    supportedBasemaps: ['positron', 'dark', 'osm', 'satellite', 'eli-local'],
     layer: {
-      source: 'openmaptiles',
+      source: BUILDING_SOURCE_ID,
       'source-layer': 'building',
       type: 'fill-extrusion',
       minzoom: 14,
@@ -48,6 +50,8 @@ export function createBuildingLayerController(map, appState) {
       return;
     }
 
+    ensureBuildingSource();
+
     if (map.getLayer(BUILDING_LAYER_ID)) {
       return;
     }
@@ -57,8 +61,19 @@ export function createBuildingLayerController(map, appState) {
         id: BUILDING_LAYER_ID,
         ...sourceConfig.layer,
       },
-      findFirstSymbolLayerId(map)
+      findBuildingInsertionLayerId(map)
     );
+  };
+
+  const ensureBuildingSource = () => {
+    if (map.getSource(BUILDING_SOURCE_ID)) {
+      return;
+    }
+
+    map.addSource(BUILDING_SOURCE_ID, {
+      type: 'vector',
+      url: BUILDING_VECTOR_SOURCE_URL,
+    });
   };
 
   const clearBuildingLayer = () => {
@@ -84,7 +99,15 @@ export function createBuildingLayerController(map, appState) {
   };
 }
 
-function findFirstSymbolLayerId(map) {
+function findBuildingInsertionLayerId(map) {
+  if (map.getLayer('hillshade-layer')) {
+    return 'hillshade-layer';
+  }
+
+  if (map.getLayer('selection-line')) {
+    return 'selection-line';
+  }
+
   const layers = map.getStyle()?.layers || [];
   const symbolLayer = layers.find((layer) => layer.type === 'symbol');
   return symbolLayer?.id;

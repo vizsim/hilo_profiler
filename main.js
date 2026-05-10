@@ -7,7 +7,7 @@ import { setupDirectProfileController } from './js/elevation/directProfileContro
 import { setupContextMenu } from './js/ui/contextMenu.js';
 import { setupPhotonGeocoder } from './js/utils/geocoder.js';
 
-const BUILDING_SUPPORTED_BASEMAPS = new Set(['positron', 'dark']);
+const BUILDING_SUPPORTED_BASEMAPS = new Set(['positron', 'dark', 'osm', 'satellite', 'eli-local']);
 
 const appState = createAppState();
 const mapApi = initMap(appState);
@@ -158,13 +158,13 @@ appState.subscribe((state) => {
   const buildingsSupported = BUILDING_SUPPORTED_BASEMAPS.has(state.basemap);
   if (buildingSourceStatus) {
     if (state.buildingsEnabled && buildingsSupported) {
-      buildingSourceStatus.textContent = 'OSM/OpenFreeMap aktiv. Extrusionen erscheinen ab Zoom 14 auf Positron und Dark.';
+      buildingSourceStatus.textContent = 'OSM/OpenFreeMap aktiv. Extrusionen erscheinen ab Zoom 14 auf Vector- und Raster-Basemaps.';
     } else if (state.buildingsEnabled) {
-      buildingSourceStatus.textContent = 'Phase 1 ist aktiv, wird mit der aktuellen Basemap aber noch nicht angezeigt. Wechsel zu Positron oder Dark.';
+      buildingSourceStatus.textContent = 'Phase 1 ist aktiv, wird mit der aktuellen Basemap aber noch nicht angezeigt.';
     } else if (buildingsSupported) {
-      buildingSourceStatus.textContent = 'Phase 1 nutzt OSM/OpenFreeMap. Aktivieren, um Gebäude ab Zoom 14 zu extrudieren.';
+      buildingSourceStatus.textContent = 'Phase 1 nutzt OSM/OpenFreeMap. Aktivieren, um Gebäude ab Zoom 14 auch über Raster-Basemaps zu extrudieren.';
     } else {
-      buildingSourceStatus.textContent = 'Phase 1 unterstützt vorerst Positron und Dark. Satellite folgt später als eigener Schritt.';
+      buildingSourceStatus.textContent = 'Phase 1 unterstützt die aktuellen Basemaps noch nicht.';
     }
   }
 });
